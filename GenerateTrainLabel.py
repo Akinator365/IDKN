@@ -148,7 +148,7 @@ def SIR_Single(graph, graph_name):
 
 def SIR_Multiple(graph, label_path):
     print("---- start creating labels ----")
-    simulations = 1
+    simulations = 1000
     degree = dict(nx.degree(graph))
     ave_degree = sum(degree.values()) / len(graph)
     second_order_avg_degree = []
@@ -201,14 +201,25 @@ if __name__ == '__main__':
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
     REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
     Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
-    num_graph = 10
+    # 每种图的数量
+    num_graph = 100
+    # 图的节点数量
+    num_nodes = 1000
+    # 图的节点数量浮动范围
     for type in Synthetic_Type:
         print(f'Processing {type} graphs...')
         for id in range(num_graph):
-            network_name = f"{type}_1000_{id}"
+            network_name = f"{type}_{num_nodes}_{id}"
             graph_path = os.path.join(TRAIN_DATASET_PATH, type + '_graph', network_name + '.txt')
             labels_path = os.path.join(TRAIN_LABELS_PATH, type + '_graph', network_name + "_labels")
             os.makedirs(os.path.dirname(labels_path), exist_ok=True)
+            txt_filepath = labels_path + ".txt"
+            # 如果文件已经存在，则跳过
+            if os.path.exists(txt_filepath):
+                print(f"File {txt_filepath} already exists, skipping...")
+                continue
+            else:
+                print(f"Processing {network_name}")
 
             G = nx.read_edgelist(graph_path)
             start_time = start_timer()  # 记录开始时间
