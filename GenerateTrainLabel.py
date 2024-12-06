@@ -97,7 +97,7 @@ def SIR_network(graph, source, beta, gamma, step):
     return sir_values
 
 
-def SIR_Single(graph, graph_name):
+def SIR_Single(graph, label_path):
     print("---- start creating labels ----")
     simulations = 1000
     degree = dict(nx.degree(graph))
@@ -127,20 +127,15 @@ def SIR_Single(graph, graph_name):
     # print(graph.nodes)
     print(influence)
 
-    output_dir = os.path.join(".", "data", "labels")
-    # 输出图中节点的顺序和对应的影响力
     for idx, node in enumerate(graph.nodes):
         print(f"Node {node}: Influence {influence[idx]}")
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
 
     # 创建并打开文件，写入影响力数据
-    txt_filename = os.path.join(output_dir, graph_name + ".txt")
+    txt_filename = label_path + ".txt"
 
     with open(txt_filename, "w") as f:
-        for idx, node in enumerate(graph.nodes):
-            # 格式化输出，node_id 和 influence
-            f.write(f"{node}\t{influence[idx]}\n")
+        for node in graph.nodes:
+            f.write(f"{node}\t{influence[node]}\n")
 
     print(f"Influence values saved to {txt_filename}")
     print("---- end creating labels ----")
@@ -223,7 +218,7 @@ if __name__ == '__main__':
 
             G = nx.read_edgelist(graph_path)
             start_time = start_timer()  # 记录开始时间
-            # SIR_Single(G, Network)
+            #SIR_Single(G, labels_path)
             SIR_Multiple(G, labels_path)
             elapsed_time = stop_timer(start_time)  # 计算函数运行时间
             print(f"Total time taken: {elapsed_time:.2f} seconds")
