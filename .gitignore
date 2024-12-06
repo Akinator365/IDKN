@@ -1,0 +1,10 @@
+.idea/
+__pycache__/
+data/raw/
+data/processed/
+examples/
+output/
+training/
+demo.ipynb
+torch_scatter-2.1.2+pt24cu124-cp38-cp38-win_amd64.whl
+torch_sparse-0.6.18+pt24cu124-cp38-cp38-win_amd64.whl
