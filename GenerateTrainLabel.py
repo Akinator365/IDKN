@@ -4,6 +4,10 @@ import networkx as nx
 import numpy as np
 import time
 from multiprocessing import Pool  # 导入并行计算池
+import concurrent.futures
+from scipy.stats import kendalltau
+
+from Utils import *
 
 # 计时器
 def start_timer():
@@ -97,7 +101,7 @@ def SIR_network(graph, source, beta, gamma, step):
     return sir_values
 
 
-def SIR_Single(graph, label_path):
+def SIR_Single(graph, labels_path):
     print("---- start creating labels ----")
     simulations = 1000
     degree = dict(nx.degree(graph))
@@ -131,7 +135,7 @@ def SIR_Single(graph, label_path):
         print(f"Node {node}: Influence {influence[idx]}")
 
     # 创建并打开文件，写入影响力数据
-    txt_filename = label_path + ".txt"
+    txt_filename = labels_path + ".txt"
 
     with open(txt_filename, "w") as f:
         for node in graph.nodes:
@@ -180,6 +184,130 @@ def SIR_Multiple(graph, label_path):
     print(f"Influence values saved to {txt_filename}")
     print("---- end creating labels ----")
 
+# SIR模型模拟
+def sir_step(S, I, R, adj_list, beta, gamma):
+    new_infected = set()
+    new_recovered = set()
+
+    # 传播感染
+    for i in I:
+        for neighbor in adj_list[i]:
+            if neighbor in S and random.random() < beta:
+                new_infected.add(neighbor)
+
+    # 康复
+    for i in I:
+        if random.random() < gamma:
+            new_recovered.add(i)
+
+    # 更新状态
+    S -= new_infected
+    I |= new_infected
+    I -= new_recovered
+    R |= new_recovered
+
+    return S, I, R
+
+def simulate_node(node, adj_list, n, beta, gamma, steps, simulations):
+    count = 0
+    for sim in range(simulations):
+        # 初始化SIR状态
+        S = set(range(n))  # 易感者
+        I = {node}  # 选择种子节点作为感染者
+        R = set()  # 康复者
+        # 进行模拟
+        for t in range(steps):
+            S, I, R = sir_step(S, I, R, adj_list, beta, gamma)
+        inf = (len(I) + len(R)) / n
+        count += inf
+    aveinf = count / simulations
+    return node, aveinf  # 返回节点和它的影响力
+
+def new_SIR(graph_path, labels_path):
+    print("---- start creating labels ----")
+    adj_list = read_edges(graph_path)
+    # 初始化网络参数
+    n = len(adj_list)  # 节点数
+    beta = 0.3  # 传播率
+    gamma = 0.1  # 恢复率
+    steps = 5  # 模拟的时间步数
+    simulations = 1000 # 模拟次数
+    # 使用字典存储每个节点的影响力
+    influence = {}
+
+    # 遍历adj_list的每个节点
+    for node in adj_list:
+        print(f"Node {node}")
+        count = 0
+        for sim in range(simulations):
+            # 初始化SIR状态
+            S = set(range(n))  # 易感者
+            I = {node}  # 随机选择一个感染者
+            R = set()  # 康复者
+            # 进行模拟
+            #history = []
+            for t in range(steps):
+                S, I, R = sir_step(S, I, R, adj_list, beta, gamma)
+                #history.append((len(S), len(I), len(R)))
+            inf = (len(I) + len(R)) / n
+            count += inf
+        aveinf = count / simulations
+        influence[node] = aveinf  # 使用字典存储影响力
+
+    # 打印每个节点的影响力
+    for node in influence:
+        print(f"Node {node}: Influence {influence[node]:.4f}")
+
+    # 创建并打开文件，写入影响力数据
+    txt_filename = labels_path + ".txt"
+
+    with open(txt_filename, "w") as f:
+        for node in adj_list:
+            f.write(f"{node}\t{influence[node]}\n")
+
+    print(f"Influence values saved to {txt_filename}")
+    print("---- end creating labels ----")
+
+
+def new_SIR_Multiple(graph_path, labels_path):
+    print("---- start creating labels ----")
+
+    adj_list = read_edges(graph_path)
+
+    # 初始化网络参数
+    n = len(adj_list)  # 节点数
+    beta = 0.3  # 传播率
+    gamma = 0.1  # 恢复率
+    steps = 5  # 模拟的时间步数
+    simulations = 1000  # 模拟次数
+
+    # 使用字典存储每个节点的影响力
+    influence = {}
+
+    # 使用 multiprocessing.Pool 并行计算每个节点的影响力
+    with Pool(processes=12) as pool:
+        # 提交任务给进程池
+        results = pool.starmap(
+            simulate_node,
+            [(node, adj_list, n, beta, gamma, steps, simulations) for node in adj_list]
+        )
+
+        # 处理并更新影响力字典
+        for node, aveinf in results:
+            influence[node] = aveinf
+
+    # 打印每个节点的影响力
+    for node in influence:
+        print(f"Node {node}: Influence {influence[node]:.4f}")
+
+    # 创建并打开文件，写入影响力数据
+    txt_filename = labels_path + ".txt"
+    with open(txt_filename, "w") as f:
+        for node in influence:
+            f.write(f"{node}\t{influence[node]:.4f}\n")
+
+    print(f"Influence values saved to {txt_filename}")
+    print("---- end creating labels ----")
 
 def Conver_to_Array(labels_path):
     # 读取label，转换为array
@@ -201,25 +329,44 @@ if __name__ == '__main__':
     # 图的节点数量
     num_nodes = 1000
     # 图的节点数量浮动范围
-    for type in Synthetic_Type:
-        print(f'Processing {type} graphs...')
-        for id in range(num_graph):
-            network_name = f"{type}_{num_nodes}_{id}"
-            graph_path = os.path.join(TRAIN_DATASET_PATH, type + '_graph', network_name + '.txt')
-            labels_path = os.path.join(TRAIN_LABELS_PATH, type + '_graph', network_name + "_labels")
-            os.makedirs(os.path.dirname(labels_path), exist_ok=True)
-            txt_filepath = labels_path + ".txt"
-            # 如果文件已经存在，则跳过
-            if os.path.exists(txt_filepath):
-                print(f"File {txt_filepath} already exists, skipping...")
-                continue
-            else:
-                print(f"Processing {network_name}")
+    network_name = 'DNCEmails'
+    #network_name = 'karate_club_graph'
+    graph_path = os.path.join(REALWORLD_DATASET_PATH, network_name + ".txt")
+    labels_path = os.path.join(REALWORLD_LABELS_PATH, network_name + "_labels")
+    os.makedirs(os.path.dirname(labels_path), exist_ok=True)
+    new_SIR_Multiple(graph_path, labels_path)
+    file_path = os.path.join(REALWORLD_LABELS_PATH, f'{network_name}_labels.txt')
+    sorted_indexes_file1 = read_and_sort_txt(file_path)
+    new_SIR_Multiple(graph_path, labels_path)
+    file_path = os.path.join(REALWORLD_LABELS_PATH, f'{network_name}_labels.txt')
+    sorted_indexes_file2 = read_and_sort_txt(file_path)
+    # 计算第一列的肯德尔系数
+    tau, p_value = kendalltau(sorted_indexes_file1, sorted_indexes_file2)
 
-            G = nx.read_edgelist(graph_path)
-            start_time = start_timer()  # 记录开始时间
-            #SIR_Single(G, labels_path)
-            SIR_Multiple(G, labels_path)
-            elapsed_time = stop_timer(start_time)  # 计算函数运行时间
-            print(f"Total time taken: {elapsed_time:.2f} seconds")
-            Conver_to_Array(labels_path)
+    # 输出肯德尔系数和p值
+    print(f"肯德尔系数: {tau}")
+    print(f"p值: {p_value}")
+
+    #for type in Synthetic_Type:
+    #    print(f'Processing {type} graphs...')
+    #    for id in range(num_graph):
+    #        network_name = f"{type}_{num_nodes}_{id}"
+    #        graph_path = os.path.join(TRAIN_DATASET_PATH, type + '_graph', network_name + '.txt')
+    #        labels_path = os.path.join(TRAIN_LABELS_PATH, type + '_graph', network_name + "_labels")
+    #        os.makedirs(os.path.dirname(labels_path), exist_ok=True)
+    #        txt_filepath = labels_path + ".txt"
+    #        # 如果文件已经存在，则跳过
+    #        if os.path.exists(txt_filepath):
+    #            print(f"File {txt_filepath} already exists, skipping...")
+    #            continue
+    #        else:
+    #            print(f"Processing {network_name}")
+#
+    #        G = nx.read_edgelist(graph_path)
+    #        start_time = start_timer()  # 记录开始时间
+    #        #SIR_Single(G, labels_path)
+    #        #SIR_Multiple(G, labels_path)
+    #        new_SIR(graph_path, labels_path)
+    #        elapsed_time = stop_timer(start_time)  # 计算函数运行时间
+    #        print(f"Total time taken: {elapsed_time:.2f} seconds")
+    #        Conver_to_Array(labels_path)
