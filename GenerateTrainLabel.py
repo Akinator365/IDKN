@@ -276,16 +276,16 @@ def new_SIR_Multiple(graph_path, labels_path):
 
     # 初始化网络参数
     n = len(adj_list)  # 节点数
-    beta = 0.3  # 传播率
+    beta = 0.25  # 传播率
     gamma = 0.1  # 恢复率
-    steps = 5  # 模拟的时间步数
-    simulations = 1000  # 模拟次数
+    steps = 8  # 模拟的时间步数
+    simulations = 10000  # 模拟次数
 
     # 使用字典存储每个节点的影响力
     influence = {}
 
     # 使用 multiprocessing.Pool 并行计算每个节点的影响力
-    with Pool(processes=12) as pool:
+    with Pool(processes=60) as pool:
         # 提交任务给进程池
         results = pool.starmap(
             simulate_node,
@@ -323,50 +323,72 @@ if __name__ == '__main__':
     REALWORLD_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld')
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
     REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
-    Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
+    #Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
+    Synthetic_Type = ['BA']
+
     # 每种图的数量
     num_graph = 100
     # 图的节点数量
     num_nodes = 1000
     # 图的节点数量浮动范围
-    network_name = 'DNCEmails'
-    #network_name = 'karate_club_graph'
-    graph_path = os.path.join(REALWORLD_DATASET_PATH, network_name + ".txt")
-    labels_path = os.path.join(REALWORLD_LABELS_PATH, network_name + "_labels")
-    os.makedirs(os.path.dirname(labels_path), exist_ok=True)
-    new_SIR_Multiple(graph_path, labels_path)
-    file_path = os.path.join(REALWORLD_LABELS_PATH, f'{network_name}_labels.txt')
-    sorted_indexes_file1 = read_and_sort_txt(file_path)
-    new_SIR_Multiple(graph_path, labels_path)
-    file_path = os.path.join(REALWORLD_LABELS_PATH, f'{network_name}_labels.txt')
-    sorted_indexes_file2 = read_and_sort_txt(file_path)
-    # 计算第一列的肯德尔系数
-    tau, p_value = kendalltau(sorted_indexes_file1, sorted_indexes_file2)
 
-    # 输出肯德尔系数和p值
-    print(f"肯德尔系数: {tau}")
-    print(f"p值: {p_value}")
+    #network_name = 'DNCEmails'
+    ##network_name = 'karate_club_graph'
+    #graph_path = os.path.join(REALWORLD_DATASET_PATH, network_name + ".txt")
+    #labels_path = os.path.join(REALWORLD_LABELS_PATH, network_name + "_labels")
+    #os.makedirs(os.path.dirname(labels_path), exist_ok=True)
+    #new_SIR_Multiple(graph_path, labels_path)
+    #file_path = os.path.join(REALWORLD_LABELS_PATH, f'{network_name}_labels.txt')
+    #sorted_indexes_file1 = read_and_sort_txt(file_path)
+    #new_SIR_Multiple(graph_path, labels_path)
+    #file_path = os.path.join(REALWORLD_LABELS_PATH, f'{network_name}_labels.txt')
+    #sorted_indexes_file2 = read_and_sort_txt(file_path)
+    ## 计算第一列的肯德尔系数
+    #tau, p_value = kendalltau(sorted_indexes_file1, sorted_indexes_file2)
 
-    #for type in Synthetic_Type:
-    #    print(f'Processing {type} graphs...')
-    #    for id in range(num_graph):
-    #        network_name = f"{type}_{num_nodes}_{id}"
-    #        graph_path = os.path.join(TRAIN_DATASET_PATH, type + '_graph', network_name + '.txt')
-    #        labels_path = os.path.join(TRAIN_LABELS_PATH, type + '_graph', network_name + "_labels")
-    #        os.makedirs(os.path.dirname(labels_path), exist_ok=True)
-    #        txt_filepath = labels_path + ".txt"
-    #        # 如果文件已经存在，则跳过
-    #        if os.path.exists(txt_filepath):
-    #            print(f"File {txt_filepath} already exists, skipping...")
-    #            continue
-    #        else:
-    #            print(f"Processing {network_name}")
-#
-    #        G = nx.read_edgelist(graph_path)
-    #        start_time = start_timer()  # 记录开始时间
-    #        #SIR_Single(G, labels_path)
-    #        #SIR_Multiple(G, labels_path)
-    #        new_SIR(graph_path, labels_path)
-    #        elapsed_time = stop_timer(start_time)  # 计算函数运行时间
-    #        print(f"Total time taken: {elapsed_time:.2f} seconds")
-    #        Conver_to_Array(labels_path)
+    ## 输出肯德尔系数和p值
+    #print(f"肯德尔系数: {tau}")
+    #print(f"p值: {p_value}")
+
+    #network_type = 'ER'
+    #network_name = 'ER_1000_0'
+    ##network_name = 'karate_club_graph'
+    #graph_path = os.path.join(TRAIN_DATASET_PATH, network_type + '_graph', network_name + ".txt")
+    #labels_path = os.path.join(REALWORLD_LABELS_PATH, network_name + "_labels")
+    #os.makedirs(os.path.dirname(labels_path), exist_ok=True)
+    #new_SIR_Multiple(graph_path, labels_path)
+    #file_path = os.path.join(REALWORLD_LABELS_PATH, f'{network_name}_labels.txt')
+    #sorted_indexes_file1 = read_and_sort_txt(file_path)
+    #new_SIR_Multiple(graph_path, labels_path)
+    #file_path = os.path.join(REALWORLD_LABELS_PATH, f'{network_name}_labels.txt')
+    #sorted_indexes_file2 = read_and_sort_txt(file_path)
+    ## 计算第一列的肯德尔系数
+    #tau, p_value = kendalltau(sorted_indexes_file1, sorted_indexes_file2)
+
+    ## 输出肯德尔系数和p值
+    #print(f"肯德尔系数: {tau}")
+    #print(f"p值: {p_value}")
+
+    for type in Synthetic_Type:
+        print(f'Processing {type} graphs...')
+        for id in range(num_graph):
+            network_name = f"{type}_{num_nodes}_{id}"
+            graph_path = os.path.join(TRAIN_DATASET_PATH, type + '_graph', network_name + '.txt')
+            labels_path = os.path.join(TRAIN_LABELS_PATH, type + '_graph', network_name + "_labels")
+            os.makedirs(os.path.dirname(labels_path), exist_ok=True)
+            txt_filepath = labels_path + ".txt"
+            # 如果文件已经存在，则跳过
+            if os.path.exists(txt_filepath):
+                print(f"File {txt_filepath} already exists, skipping...")
+                continue
+            else:
+                print(f"Processing {network_name}")
+
+            G = nx.read_edgelist(graph_path)
+            start_time = start_timer()  # 记录开始时间
+            #SIR_Single(G, labels_path)
+            #SIR_Multiple(G, labels_path)
+            new_SIR_Multiple(graph_path, labels_path)
+            elapsed_time = stop_timer(start_time)  # 计算函数运行时间
+            print(f"Total time taken: {elapsed_time:.2f} seconds")
+            Conver_to_Array(labels_path)
