@@ -269,17 +269,21 @@ def new_SIR(graph_path, labels_path):
     print("---- end creating labels ----")
 
 
-def new_SIR_Multiple(graph_path, labels_path):
+def new_SIR_Multiple(graph_path, labels_path, network_params):
     print("---- start creating labels ----")
 
     adj_list = read_edges(graph_path)
 
     # 初始化网络参数
     n = len(adj_list)  # 节点数
-    beta = 0.25  # 传播率
-    gamma = 0.1  # 恢复率
-    steps = 8  # 模拟的时间步数
-    simulations = 10000  # 模拟次数
+    beta = network_params.get("beta")
+    gamma = network_params.get("gamma")
+    steps = network_params.get("steps")
+    simulations = network_params.get("simulations")
+    #beta = 0.4  # 传播率
+    #gamma = 0.1  # 恢复率
+    #steps = 18  # 模拟的时间步数
+    #simulations = 1000  # 模拟次数
 
     # 使用字典存储每个节点的影响力
     influence = {}
@@ -323,8 +327,16 @@ if __name__ == '__main__':
     REALWORLD_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld')
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
     REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
-    #Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
-    Synthetic_Type = ['BA']
+    Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
+    #Synthetic_Type = ['BA']
+
+    # 参数设置
+    parameters = {
+        "BA": {"beta": 0.25, "gamma": 0.1, "steps": 8, "simulations": 10000},
+        "ER": {"beta": 0.05, "gamma": 0.02, "steps": 4, "simulations": 500},
+        "PLC": {"beta": 0.4, "gamma": 0.1, "steps": 18, "simulations": 10000},
+        "WS": {"beta": 0.3, "gamma": 0.1, "steps": 10, "simulations": 10000},
+    }
 
     # 每种图的数量
     num_graph = 100
@@ -375,6 +387,7 @@ if __name__ == '__main__':
             network_name = f"{type}_{num_nodes}_{id}"
             graph_path = os.path.join(TRAIN_DATASET_PATH, type + '_graph', network_name + '.txt')
             labels_path = os.path.join(TRAIN_LABELS_PATH, type + '_graph', network_name + "_labels")
+            network_params = parameters[type]
             os.makedirs(os.path.dirname(labels_path), exist_ok=True)
             txt_filepath = labels_path + ".txt"
             # 如果文件已经存在，则跳过
@@ -388,7 +401,7 @@ if __name__ == '__main__':
             start_time = start_timer()  # 记录开始时间
             #SIR_Single(G, labels_path)
             #SIR_Multiple(G, labels_path)
-            new_SIR_Multiple(graph_path, labels_path)
+            new_SIR_Multiple(graph_path, labels_path, network_params)
             elapsed_time = stop_timer(start_time)  # 计算函数运行时间
             print(f"Total time taken: {elapsed_time:.2f} seconds")
             Conver_to_Array(labels_path)
