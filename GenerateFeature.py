@@ -145,8 +145,9 @@ if __name__ == '__main__':
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
     REALWORLD_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'realworld')
 
-    Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
-    num_graph = 10
+    #Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
+    Synthetic_Type = ['BA']
+    num_graph = 100
     for type in Synthetic_Type:
         print(f'Processing {type} graphs...')
         for id in range(num_graph):
@@ -157,6 +158,7 @@ if __name__ == '__main__':
             df = extract_graph_features(G)
             print(f'Obtained features of {network_name}')
             #print(df)
+
 
             # 将特征转换为numpy数组，并保存为npy文件
             feature_array = df.to_numpy()

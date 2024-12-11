@@ -110,8 +110,51 @@ def extract_features(G):
 
 
 if __name__ == '__main__':
-    #Network = 'karate_club_graph'
-    Network = 'DNCEmails'
+    TRAIN_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'train')
+    REALWORLD_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld')
+    TRAIN_ROLES_PATH = os.path.join(os.getcwd(), 'data', 'roles', 'train')
+    REALWORLD_ROLES_PATH = os.path.join(os.getcwd(), 'data', 'roles', 'realworld')
+    # Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
+    Synthetic_Type = ['BA']
+
+    # 每种图的数量
+    num_graph = 100
+    # 图的节点数量
+    num_nodes = 1000
+
+    for type in Synthetic_Type:
+        print(f'Processing {type} graphs...')
+        for id in range(num_graph):
+            network_name = f"{type}_1000_{id}"
+            graph_path = os.path.join(TRAIN_DATASET_PATH, type + '_graph', network_name + '.txt')
+            roles_path = os.path.join(TRAIN_ROLES_PATH, type + '_graph', network_name + "_roles.npy")
+
+            G = nx.read_edgelist(graph_path)
+            # 提取特征
+            feature_extractor = RecursiveFeatureExtractor(G)
+            features = feature_extractor.extract_features()
+            # 提取角色
+            role_extractor = RoleExtractor(n_roles=None)
+            role_extractor.extract_role_factors(features)
+            
+            print(f'Obtained features of {network_name}')
+            #print(df)
+            role_percentage = role_extractor.role_percentage
+            # 将特征转换为numpy数组，并保存为npy文件
+            roles_array = role_percentage.to_numpy()
+            os.makedirs(os.path.dirname(roles_path), exist_ok=True)
+
+            # 如果存在文件则跳过
+            if os.path.exists(roles_path):
+                print(f"File {roles_path} already exists, skipping...")
+                continue
+            else:
+                np.save(roles_path, roles_array)
+
+
+    '''
+    Network = 'karate_club_graph'
+    #Network = 'DNCEmails'
     network_path = os.path.join(f".\\data\\networks\\realworld\\{Network}.txt")
     role_graph_path = os.path.join(f".\\output\\")
 
@@ -149,8 +192,8 @@ if __name__ == '__main__':
 
     save_edges_from_similarity(Network, similarity_matrix, 5, role_graph_path)
 
-    #node_roles = role_extractor.roles
-
+    node_roles = role_extractor.roles
+'''
 
     # build color palette for plotting
     #unique_roles = sorted(set(node_roles.values()))

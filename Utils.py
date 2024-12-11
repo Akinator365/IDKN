@@ -1,6 +1,8 @@
+import os
 import pickle
 import logging
 
+import numpy as np
 
 
 def pickle_read(path):
@@ -30,6 +32,14 @@ def get_logger(filename, verbosity=1, name=None):
 
     return logger
 
+def min_max_normalization(x):
+    min_val = x.min(axis=0, keepdims=True)  # 计算每个特征的最小值
+    max_val = x.max(axis=0, keepdims=True)  # 计算每个特征的最大值
+    range_val = max_val - min_val  # 计算范围
+
+    # 如果范围为零（即所有值都相同），直接返回 0 或 其他适当的值
+    range_val[range_val == 0] = 1  # 避免除以零
+    return (x - min_val) / range_val
 
 # 定义一个函数来读取文件并按第二列降序排列
 def read_and_sort_txt(file_path):
@@ -68,3 +78,36 @@ def read_edges(file_path):
             adj_list[node2].add(node1)
 
     return adj_list
+
+
+def analyze_npy_files(folder_path):
+    """
+    读取指定文件夹下的所有 .npy 文件，并输出每个文件的数据行数和列数。
+
+    :param folder_path: 文件夹路径
+    """
+    # 获取文件夹中所有 .npy 文件
+    files = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
+
+    if not files:
+        print("指定文件夹中没有 .npy 文件")
+        return
+
+    # 遍历每个文件
+    for file_name in files:
+        file_path = os.path.join(folder_path, file_name)
+
+        # 加载 .npy 文件
+        data = np.load(file_path)
+
+        # 获取行数和列数
+        if len(data.shape) == 2:  # 确保是二维数组
+            rows, cols = data.shape
+        elif len(data.shape) == 1:  # 一维数组
+            rows, cols = data.shape[0], 1
+        else:
+            print(f"文件 {file_name} 不是二维或一维数据，跳过...")
+            continue
+
+        # 输出结果
+        print(f"文件: {file_name} | 行数: {rows} | 列数: {cols}")

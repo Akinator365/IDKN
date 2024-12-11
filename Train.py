@@ -1,8 +1,9 @@
+import datetime
 import os
 
 import numpy as np
 import torch
-from scipy.stats import stats
+from scipy import stats
 from sympy import false
 from torch.cuda import graph
 from torch.optim.lr_scheduler import StepLR
@@ -78,7 +79,7 @@ def test(loader):
     rank = 0
     for data in loader:  # Iterate in batches over the training/test dataset.
         data = data.to(device)
-        out = model(data.x, data.edge_index, data.num_nodes)
+        out = model(data.x, data.x, data.edge_index, data.num_nodes)
         loss += criterion(out, data.y.view(-1, 1))
         rank += kendall_rank_coffecient(out.cpu().detach().numpy(), data.y.view(-1, 1).cpu().detach().numpy(),
                                         data.num_graphs, data)
@@ -109,22 +110,20 @@ def save_model(epoch):
     path_checkpoint = os.path.join(CHECKPOINTS_PATH, "checkpoint_{}_epoch.pkl".format(epoch))
     torch.save(checkpoint, path_checkpoint)
 
-def min_max_normalization(x):
-    min_val = x.min(axis=0, keepdims=True)  # 计算每个特征的最小值
-    max_val = x.max(axis=0, keepdims=True)  # 计算每个特征的最大值
-    return (x - min_val) / (max_val - min_val)  # 归一化到 [0, 1]
-
 
 if __name__ == '__main__':
 
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
     TRAIN_FEATURES_PATH = os.path.join(os.getcwd(), 'data', 'features', 'train')
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
+    TRAIN_ROLES_PATH = os.path.join(os.getcwd(), 'data', 'roles', 'train')
     adj_path = TRAIN_ADJ_PATH
     features_path = TRAIN_FEATURES_PATH
     labels_path = TRAIN_LABELS_PATH
-    Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
-    num_graphs = 10
+    roles_path = TRAIN_ROLES_PATH
+    #Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
+    Synthetic_Type = ['BA']
+    num_graphs = 100
 
     # 假设已经有三个 .npy 文件： adj.npy, feature.npy, label.npy
     #train_dataset = GraphDataset(
@@ -144,28 +143,31 @@ if __name__ == '__main__':
             single_adj_path = os.path.join(adj_path, type + '_graph', network_name + '_adj.npy')
             single_features_path = os.path.join(features_path, type + '_graph', network_name + '_features.npy')
             single_labels_path = os.path.join(labels_path, type + '_graph', network_name + '_labels.npy')
+            single_roles_path = os.path.join(roles_path, type + '_graph', network_name + '_roles.npy')
+
             adj_matrix = pickle_read(single_adj_path)
             node_features = np.load(single_features_path)
             labels = np.load(single_labels_path)
+            roles = np.load(single_roles_path)
 
             # 假设 adj_matrix 是一个邻接矩阵，我们需要将其转为边索引格式
             edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0]  # 转为 edge_index 格式
 
             # 对节点特征进行归一化
             node_features = min_max_normalization(node_features)  # 归一化操作
-
-            # 将第四列特征设置为0
-            node_features[:, 3] = 0
+            # 对节点角色特征进行归一化
+            roles = min_max_normalization(roles)  # 归一化操作
 
             # 转换为 PyTorch 张量
-            x = torch.tensor(node_features, dtype=torch.float)  # 节点特征
+            x1 = torch.tensor(node_features, dtype=torch.float)  # 节点特征
+            x2 = torch.tensor(roles, dtype=torch.float)  # 节点角色特征
             y = torch.tensor(labels, dtype=torch.float)  # 标签
 
             # 计算节点数
-            num_nodes = x.size(0)  # 或者根据 adj_matrix 计算节点数：num_nodes = adj_matrix.shape[0]
+            num_nodes = x1.size(0)  # 或者根据 adj_matrix 计算节点数：num_nodes = adj_matrix.shape[0]
 
             # 创建 PyTorch Geometric 的 Data 对象
-            data = Data(x=x, edge_index=edge_index, num_nodes=num_nodes, y=y)
+            data = Data(x=x1, edge_index=edge_index, num_nodes=num_nodes, y=y)
 
             # 将图数据添加到 data_list 中
             data_list.append(data)
@@ -173,10 +175,10 @@ if __name__ == '__main__':
     # 使用 DataLoader 加载数据集
     #train_loader = DataLoader(train_dataset, batch_size=5, shuffle=True)
     # 将data_list分为训练集和测试集
-    train_dataset = data_list[:round(num_graphs * 4 * 0.9)]
-    test_dataset = data_list[round(num_graphs * 4 * 0.9):]
+    train_dataset = data_list[:round(num_graphs * 0.9)]
+    test_dataset = data_list[round(num_graphs * 0.9):]
     train_loader = DataLoader(train_dataset, batch_size=5, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=5, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     print(f"Number of batches in train_loader: {len(train_loader)}")
 
@@ -189,12 +191,12 @@ if __name__ == '__main__':
     # 迭代 DataLoader，检查每个批次的数据
     for batch in train_loader:
         print(f"Batch:")
-        print(f"Node features (x): {batch.x.shape}")  # 打印节点特征的形状
+        print(f"Node features (x1): {batch.x.shape}")  # 打印节点特征的形状
         print(f"Edge index (edge_index): {batch.edge_index.shape}")  # 打印边索引的形状
         print(f"Labels (y): {batch.y.shape}")  # 打印标签的形状
 
         # 打印每个批次的部分数据
-        print(f"First graph node features (x[0]): {batch.x[0]}")  # 打印第一个图的节点特征
+        print(f"First graph node features (x1[0]): {batch.x[0]}")  # 打印第一个图的节点特征
         print(f"First graph edge indices (edge_index[:, 0]): {batch.edge_index[:, 0]}")  # 打印第一个图的边索引
         print(f"First graph label (y[0]): {batch.y[0]}")  # 打印第一个图的标签
 
@@ -208,7 +210,8 @@ if __name__ == '__main__':
     scheduler_1 = StepLR(optimizer, step_size=50, gamma=0.3)
     epoch_num = 200
     checkpoint_interval = 5
-    CHECKPOINTS_PATH = os.path.join(os.getcwd(), 'training', 'IDKN')
+    date = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    CHECKPOINTS_PATH = os.path.join(os.getcwd(), 'training', 'IDKN', date)
     os.makedirs(CHECKPOINTS_PATH, exist_ok=True)
     LOGGING_PATH = CHECKPOINTS_PATH + '/Logs/'
     os.makedirs(LOGGING_PATH, exist_ok=True)
@@ -228,7 +231,7 @@ if __name__ == '__main__':
         model.train()
         for data in train_loader:  # Iterate in batches over the training dataset.
             data = data.to(device)
-            out = model(data.x, data.edge_index, data.num_nodes)
+            out = model(data.x, data.x, data.edge_index, data.num_nodes)
             loss = criterion(out, data.y.view(-1, 1))
 
             #print(loss)

@@ -4,7 +4,6 @@ import networkx as nx
 import numpy as np
 import time
 from multiprocessing import Pool  # 导入并行计算池
-import concurrent.futures
 from scipy.stats import kendalltau
 
 from Utils import *
