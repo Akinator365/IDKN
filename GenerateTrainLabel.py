@@ -207,6 +207,21 @@ def sir_step(S, I, R, adj_list, beta, gamma):
 
     return S, I, R
 
+def ic_step(S, I, R, adj_list, beta):
+    new_infected = set()
+
+    # 传播感染
+    for i in I:
+        for neighbor in adj_list[i]:
+            if neighbor in S and random.random() < beta:
+                new_infected.add(neighbor)
+
+    S -= new_infected  # 易感者变为感染者
+    R |= I  # 将本轮的感染者加入已传播者集合
+    I = new_infected  # 新的感染者集合由本轮传播的感染者构成
+
+    return S, I, R
+
 def simulate_node(node, adj_list, n, beta, gamma, steps, simulations):
     count = 0
     for sim in range(simulations):
@@ -214,9 +229,16 @@ def simulate_node(node, adj_list, n, beta, gamma, steps, simulations):
         S = set(range(n))  # 易感者
         I = {node}  # 选择种子节点作为感染者
         R = set()  # 康复者
+
+        # 移动种子节点到已传播者集合中，因为它是第一个感染者
+        S.remove(node)  # 将种子节点从易感者集合中移除
+
         # 进行模拟
-        for t in range(steps):
-            S, I, R = sir_step(S, I, R, adj_list, beta, gamma)
+        #for t in range(steps):
+        #    S, I, R = sir_step(S, I, R, adj_list, beta, gamma)
+        while len(I) > 0:
+            #S, I, R = sir_step(S, I, R, adj_list, beta, gamma)
+            S, I, R = ic_step(S, I, R, adj_list, beta)
         inf = (len(I) + len(R)) / n
         count += inf
     aveinf = count / simulations
@@ -288,7 +310,7 @@ def new_SIR_Multiple(graph_path, labels_path, network_params):
     influence = {}
 
     # 使用 multiprocessing.Pool 并行计算每个节点的影响力
-    with Pool(processes=60) as pool:
+    with Pool(processes=16) as pool:
         # 提交任务给进程池
         results = pool.starmap(
             simulate_node,
@@ -301,13 +323,13 @@ def new_SIR_Multiple(graph_path, labels_path, network_params):
 
     # 打印每个节点的影响力
     for node in influence:
-        print(f"Node {node}: Influence {influence[node]:.4f}")
+        print(f"Node {node}: Influence {influence[node]:.8f}")
 
     # 创建并打开文件，写入影响力数据
     txt_filename = labels_path + ".txt"
     with open(txt_filename, "w") as f:
         for node in influence:
-            f.write(f"{node}\t{influence[node]:.4f}\n")
+            f.write(f"{node}\t{influence[node]:.8f}\n")
 
     print(f"Influence values saved to {txt_filename}")
     print("---- end creating labels ----")
@@ -326,19 +348,19 @@ if __name__ == '__main__':
     REALWORLD_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld')
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
     REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
-    Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
-    #Synthetic_Type = ['BA']
+    #Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
+    Synthetic_Type = ['BA']
 
     # 参数设置
     parameters = {
-        "BA": {"beta": 0.25, "gamma": 0.1, "steps": 8, "simulations": 10000},
+        "BA": {"beta": 0.25, "gamma": 0.1, "steps": 8, "simulations": 1000},
         "ER": {"beta": 0.05, "gamma": 0.02, "steps": 4, "simulations": 500},
-        "PLC": {"beta": 0.4, "gamma": 0.1, "steps": 18, "simulations": 10000},
+        "PLC": {"beta": 0.4, "gamma": 0.1, "steps": 15, "simulations": 1000},
         "WS": {"beta": 0.3, "gamma": 0.1, "steps": 10, "simulations": 10000},
     }
 
     # 每种图的数量
-    num_graph = 100
+    num_graph = 1
     # 图的节点数量
     num_nodes = 1000
     # 图的节点数量浮动范围
@@ -383,7 +405,8 @@ if __name__ == '__main__':
     for type in Synthetic_Type:
         print(f'Processing {type} graphs...')
         for id in range(num_graph):
-            network_name = f"{type}_{num_nodes}_{id}"
+            network_name = 'DNCEmails'
+            #network_name = f"{type}_{num_nodes}_{id}"
             graph_path = os.path.join(TRAIN_DATASET_PATH, type + '_graph', network_name + '.txt')
             labels_path = os.path.join(TRAIN_LABELS_PATH, type + '_graph', network_name + "_labels")
             network_params = parameters[type]
