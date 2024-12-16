@@ -5,6 +5,7 @@ import numpy as np
 import time
 from multiprocessing import Pool  # 导入并行计算池
 from scipy.stats import kendalltau
+import json
 
 from Utils import *
 
@@ -222,7 +223,7 @@ def ic_step(S, I, R, adj_list, beta):
 
     return S, I, R
 
-def simulate_node(node, adj_list, n, beta, gamma, steps, simulations):
+def simulate_node(node, adj_list, n, beta, gamma, simulations):
     count = 0
     for sim in range(simulations):
         # 初始化SIR状态
@@ -234,15 +235,13 @@ def simulate_node(node, adj_list, n, beta, gamma, steps, simulations):
         S.remove(node)  # 将种子节点从易感者集合中移除
 
         # 进行模拟
-        #for t in range(steps):
-        #    S, I, R = sir_step(S, I, R, adj_list, beta, gamma)
         while len(I) > 0:
             #S, I, R = sir_step(S, I, R, adj_list, beta, gamma)
             S, I, R = ic_step(S, I, R, adj_list, beta)
         inf = (len(I) + len(R)) / n
         count += inf
-    aveinf = count / simulations
-    return node, aveinf  # 返回节点和它的影响力
+    ave_inf = count / simulations
+    return node, ave_inf  # 返回节点和它的影响力
 
 def new_SIR(graph_path, labels_path):
     print("---- start creating labels ----")
@@ -294,32 +293,46 @@ def new_SIR_Multiple(graph_path, labels_path, network_params):
     print("---- start creating labels ----")
 
     adj_list = read_edges(graph_path)
-
+    graph = nx.read_edgelist(graph_path)
+    node_list = list(graph.nodes())
+    # 使用 numpy 的 array 函数和 astype 方法将元素转换为整数
+    int_node_list = np.array(node_list).astype(int)
     # 初始化网络参数
-    n = len(adj_list)  # 节点数
-    beta = network_params.get("beta")
-    gamma = network_params.get("gamma")
-    steps = network_params.get("steps")
-    simulations = network_params.get("simulations")
-    #beta = 0.4  # 传播率
-    #gamma = 0.1  # 恢复率
-    #steps = 18  # 模拟的时间步数
-    #simulations = 1000  # 模拟次数
+    n = len(node_list)  # 节点数
+    beta = network_params['beta']
+    gamma = network_params['gamma']
+    simulations = network_params['simulations']
+
+    degree = dict(nx.degree(graph))
+    # 平均度为所有节点度之和除以总节点数
+    ave_degree =  sum(degree.values()) / len(graph)
+    # 计算节点的二阶平均度
+    second_order_avg_degree = []
+    for node in graph.nodes():
+        neighbors = list(graph.neighbors(node))
+        second_order_degrees = [graph.degree(neighbor) for neighbor in neighbors]
+        if len(second_order_degrees) > 0:
+            second_order_avg_degree.append(sum(second_order_degrees) / len(second_order_degrees))  # 计算邻居节点的平均度
+    # 计算二阶平均度
+    second_order_avg_degree = sum(second_order_avg_degree) / len(second_order_avg_degree)
+    beta_1 = ave_degree / second_order_avg_degree # 感染率
+    beta_1 = beta_1 * 1.5
+    print(f"beta: {beta_1}")
 
     # 使用字典存储每个节点的影响力
     influence = {}
 
     # 使用 multiprocessing.Pool 并行计算每个节点的影响力
-    with Pool(processes=16) as pool:
+    with Pool(processes=60) as pool:
         # 提交任务给进程池
         results = pool.starmap(
             simulate_node,
-            [(node, adj_list, n, beta, gamma, steps, simulations) for node in adj_list]
+            [(node, adj_list, n, beta, gamma, simulations) for node in int_node_list]
         )
 
         # 处理并更新影响力字典
-        for node, aveinf in results:
-            influence[node] = aveinf
+        for node, ave_inf in results:
+            influence[node] = ave_inf
 
     # 打印每个节点的影响力
     for node in influence:
@@ -348,17 +361,10 @@ if __name__ == '__main__':
     REALWORLD_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld')
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
     REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
-    #Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
-    Synthetic_Type = ['BA']
 
-    # 参数设置
-    parameters = {
-        "BA": {"beta": 0.25, "gamma": 0.1, "steps": 8, "simulations": 1000},
-        "ER": {"beta": 0.05, "gamma": 0.02, "steps": 4, "simulations": 500},
-        "PLC": {"beta": 0.4, "gamma": 0.1, "steps": 15, "simulations": 1000},
-        "WS": {"beta": 0.3, "gamma": 0.1, "steps": 10, "simulations": 10000},
-    }
-
+    # 从文件中读取参数
+    with open("Network_Parameters.json", "r") as f:
+        network_params = json.load(f)
     # 每种图的数量
     num_graph = 1
     # 图的节点数量
@@ -402,14 +408,15 @@ if __name__ == '__main__':
     #print(f"肯德尔系数: {tau}")
     #print(f"p值: {p_value}")
 
-    for type in Synthetic_Type:
-        print(f'Processing {type} graphs...')
+    for network in network_params:
+        network_type = network_params[network]['type']
+        print(f'Processing {network_type} graphs...')
         for id in range(num_graph):
-            network_name = 'DNCEmails'
-            #network_name = f"{type}_{num_nodes}_{id}"
-            graph_path = os.path.join(TRAIN_DATASET_PATH, type + '_graph', network_name + '.txt')
-            labels_path = os.path.join(TRAIN_LABELS_PATH, type + '_graph', network_name + "_labels")
-            network_params = parameters[type]
+            #network_name = 'DNCEmails'
+            network_name = f"{network}_{id}"
+            graph_path = os.path.join(TRAIN_DATASET_PATH, network_type + '_graph', network, network_name + '.txt')
+            labels_path = os.path.join(TRAIN_LABELS_PATH, network_type + '_graph', network, network_name + "_labels")
+            network_para = network_params[network]
             os.makedirs(os.path.dirname(labels_path), exist_ok=True)
             txt_filepath = labels_path + ".txt"
             # 如果文件已经存在，则跳过
@@ -423,7 +430,7 @@ if __name__ == '__main__':
             start_time = start_timer()  # 记录开始时间
             #SIR_Single(G, labels_path)
             #SIR_Multiple(G, labels_path)
-            new_SIR_Multiple(graph_path, labels_path, network_params)
+            new_SIR_Multiple(graph_path, labels_path, network_para)
             elapsed_time = stop_timer(start_time)  # 计算函数运行时间
             print(f"Total time taken: {elapsed_time:.2f} seconds")
             Conver_to_Array(labels_path)

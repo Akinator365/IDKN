@@ -1,20 +1,20 @@
 import os
-
+import json
 import networkx as nx
 import numpy as np
 
-
-def Generate_Graph(g_type, num_nodes, scope):
+def Generate_Graph(g_type, network_para, scope):
+    num_nodes = network_para['n']
     num_min = num_nodes - scope
     num_max = num_nodes + scope
     num_nodes = np.random.randint(num_max - num_min + 1) + num_min
 
     if g_type == 'erdos_renyi':
-        g = nx.erdos_renyi_graph(n=num_nodes, p=0.1)
+        g = nx.erdos_renyi_graph(n=num_nodes, p=0.02)
     elif g_type == 'small-world':
         g = nx.connected_watts_strogatz_graph(n=num_nodes, k=4, p=0.1)
     elif g_type == 'barabasi_albert':
-        g = nx.barabasi_albert_graph(n=num_nodes, m=3)
+        g = nx.barabasi_albert_graph(n=num_nodes, m=network_para['m'])
     elif g_type == 'powerlaw':
         g = nx.powerlaw_cluster_graph(n=num_nodes, m=3, p=0.05)
 
@@ -24,14 +24,14 @@ def Generate_Graph(g_type, num_nodes, scope):
 
     return g, num_nodes
 
-def GenerateTrainData(train_dataset_path, id, graph_type, num_nodes, scope):
+def GenerateTrainData(train_dataset_path, id, network, network_para, scope):
 
+    graph_type = network_para['type']
+    graph_name = network + f'_{id}.txt'
     print(f'Generating No.{id} training {graph_type} graphs')
 
-    data_path = os.path.join(train_dataset_path, graph_type+'_graph')
+    data_path = os.path.join(train_dataset_path, graph_type+'_graph', network)
     os.makedirs(data_path, exist_ok=True)
-
-    graph_name = f"{graph_type}_{num_nodes}_{id}.txt"
 
     # 查看文件是否存在，如果存在则跳过
     if os.path.exists(os.path.join(data_path, graph_name)):
@@ -48,7 +48,7 @@ def GenerateTrainData(train_dataset_path, id, graph_type, num_nodes, scope):
         g_type = 'powerlaw'
 
     # Generate Graph
-    g, num_nodes = Generate_Graph(g_type, num_nodes, scope)
+    g, num_nodes = Generate_Graph(g_type, network_para, scope)
 
     # 保存图为txt文件
     # 将边写入文件
@@ -60,13 +60,13 @@ def GenerateTrainData(train_dataset_path, id, graph_type, num_nodes, scope):
 
 if __name__ == '__main__':
     TRAIN_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'train')
-    Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
+    # 从文件中读取参数
+    with open("Network_Parameters.json", "r") as f:
+        network_params = json.load(f)
     # 每种图的数量
-    num_graph = 100
-    # 图的节点数量
-    num_nodes = 1000
+    num_graph = 32
     # 图的节点数量浮动范围
     scope = 100
-    for type in Synthetic_Type:
+    for network in network_params:
         for id in range(num_graph):
-            GenerateTrainData(TRAIN_DATASET_PATH, id, type, num_nodes, scope)
+            GenerateTrainData(TRAIN_DATASET_PATH, id, network, network_params[network], scope)
