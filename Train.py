@@ -119,8 +119,11 @@ if __name__ == '__main__':
             # 计算节点数
             num_nodes = x1.size(0)  # 或者根据 adj_matrix 计算节点数：num_nodes = adj_matrix.shape[0]
 
+            # 确保 x2 是一个 PyTorch Tensor
+            roles_padded_tensor = torch.tensor(roles_padded, dtype=torch.float)
+
             # 创建 PyTorch Geometric 的 Data 对象
-            data = Data(x=x1, edge_index=edge_index, num_nodes=num_nodes, y=y)
+            data = Data(x=x1, x2=roles_padded_tensor, edge_index=edge_index, num_nodes=num_nodes, y=y)
 
             # 将图数据添加到 data_list 中
             data_list.append(data)
@@ -159,7 +162,9 @@ if __name__ == '__main__':
 
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = IDKN().to(device)
+    #model = IDKN().to(device)
+    #model = IDKN_cat().to(device)
+    model = IDKN_Attention().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
     criterion = torch.nn.MSELoss(reduction='mean')
     scheduler_1 = StepLR(optimizer, step_size=50, gamma=0.3)
@@ -186,7 +191,7 @@ if __name__ == '__main__':
         model.train()
         for data in train_loader:  # Iterate in batches over the training dataset.
             data = data.to(device)
-            out = model(data.x, data.x, data.edge_index, data.num_nodes)
+            out = model(data.x, data.x2, data.edge_index, data.num_nodes)
             loss = criterion(out, data.y.view(-1, 1))
 
             #print(loss)

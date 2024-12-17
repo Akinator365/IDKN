@@ -13,7 +13,7 @@ class IDKN(torch.nn.Module):
     def __init__(self):
         super(IDKN, self).__init__()
 
-        self.conv1 = GATConv( 1, 4, heads=8, concat=True, negative_slope=0.2, dropout=0.1)
+        self.conv1 = GATConv( 10, 4, heads=8, concat=True, negative_slope=0.2, dropout=0.1)
         self.conv2 = GATConv( 32, 4, heads=4, concat=True, negative_slope=0.2, dropout=0.1)
         self.conv3 = GATConv( 16, 4, heads=2, concat=True, negative_slope=0.2, dropout=0.2)
 
@@ -31,11 +31,11 @@ class IDKN(torch.nn.Module):
         Adj = F.normalize(Adj_matrix.to_dense(), p=1, dim=1)
 
         # Feature Scoring
-        init_score = self.lin1(x1)
-        init_score = self.activation(init_score)
+        #init_score = self.lin1(x1)
+        #init_score = self.activation(init_score)
 
         # Encoding Representation
-        x3 = self.conv1(init_score, edge_index)
+        x3 = self.conv1(x1, edge_index)
         x3 = self.activation(x3)
         x4 = self.conv2(x3, edge_index)
         x4 = self.activation(x4)
@@ -47,9 +47,9 @@ class IDKN(torch.nn.Module):
         R = torch.matmul(x6, x6.t())
         R_1 = torch.mul(R, Adj)
         R_2 = torch.sum(R_1, dim=1, keepdim=True)
-        #normalied_degree = x[:, 0].view(-1, 1)
-        #local_score = R_2 + normalied_degree
-        local_score = R_2
+        normalied_degree = x1[:, 0].view(-1, 1)
+        local_score = R_2 + normalied_degree
+        #local_score = R_2
 
         # Global Socring
         R_3 = torch.matmul(Adj, x6)
@@ -65,12 +65,12 @@ class IDKN_cat(torch.nn.Module):
         super(IDKN_cat, self).__init__()
 
         # GATConv layers
-        self.conv1 = GATConv(8, 4, heads=8, concat=True, negative_slope=0.2, dropout=0.1)  # 8 = new input dimension
+        self.conv1 = GATConv(20, 4, heads=8, concat=True, negative_slope=0.2, dropout=0.1)  # 8 = new input dimension
         self.conv2 = GATConv(32, 4, heads=4, concat=True, negative_slope=0.2, dropout=0.1)
         self.conv3 = GATConv(16, 4, heads=2, concat=True, negative_slope=0.2, dropout=0.2)
 
         # Linear layers
-        self.lin1 = Linear(7 + 10, 8, bias=True)  # Input dimension updated to include role vector (e.g., 7 + 3)
+        self.lin1 = Linear(10 + 10, 8, bias=True)  # Input dimension updated to include role vector (e.g., 7 + 3)
         self.lin2 = Linear(8, 1, bias=False)
 
         self.activation = nn.ReLU()
@@ -92,10 +92,10 @@ class IDKN_cat(torch.nn.Module):
         x_combined = torch.cat([x1, x2], dim=1)  # Concatenate features along the feature dimension
 
         # Feature Scoring
-        init_score = self.lin1(x_combined)
+        #init_score = self.lin1(x_combined)
 
         # Encoding Representation
-        x3 = self.conv1(init_score, edge_index)
+        x3 = self.conv1(x_combined, edge_index)
         x4 = self.conv2(x3, edge_index)
         x5 = self.conv3(x4, edge_index)
         x6 = F.dropout(x5, p=0.3, training=self.training)
@@ -104,7 +104,8 @@ class IDKN_cat(torch.nn.Module):
         R = torch.matmul(x6, x6.t())
         R_1 = torch.mul(R, Adj)
         R_2 = torch.sum(R_1, dim=1, keepdim=True)
-        local_score = R_2
+        normalied_degree = x1[:, 0].view(-1, 1)
+        local_score = R_2 + normalied_degree
 
         # Global Scoring
         R_3 = torch.matmul(Adj, x6)
@@ -119,14 +120,14 @@ class IDKN_Attention(nn.Module):
         super(IDKN_Attention, self).__init__()
 
         # GATConv layers
-        self.conv1 = GATConv(8, 4, heads=8, concat=True, negative_slope=0.2, dropout=0.1)  # 8 = cross-attention output dim
+        self.conv1 = GATConv(16, 4, heads=8, concat=True, negative_slope=0.2, dropout=0.1)  # 8 = cross-attention output dim
         self.conv2 = GATConv(32, 4, heads=4, concat=True, negative_slope=0.2, dropout=0.1)
         self.conv3 = GATConv(16, 4, heads=2, concat=True, negative_slope=0.2, dropout=0.2)
 
         # Attention parameters
-        self.query_linear = Linear(8, 16)  # Transform x1 (中心性特征)
+        self.query_linear = Linear(10, 16)  # Transform x1 (中心性特征)
         self.key_linear = Linear(10, 16)   # Transform x2 (角色特征)
-        self.value_linear = Linear(18, 16)
+        self.value_linear = Linear(20, 16)
 
         # Linear layers for scoring
         self.lin1 = Linear(16, 8, bias=True)
@@ -145,6 +146,8 @@ class IDKN_Attention(nn.Module):
         value = self.value_linear(torch.cat([x1, x2], dim=1))
 
         attention_weights = F.softmax(torch.bmm(query.unsqueeze(1), key.unsqueeze(2)).squeeze(), dim=-1)  # Cross-attention
+        attention_weights = attention_weights.unsqueeze(-1)  # 变成 [batch_size, 1]
+
         fused_features = attention_weights * value
 
         # Step 2: GAT layers
@@ -155,17 +158,18 @@ class IDKN_Attention(nn.Module):
 
         # Step 3: Local Scoring
         fill_value = 1
-        Adj_matrix = torch.sparse_coo_tensor(edge_index, torch.ones(edge_index.shape[1]), (num_nodes, num_nodes))
-        Adj_matrix = Adj_matrix.to_dense()
-        Adj_matrix = F.normalize(Adj_matrix, p=1, dim=1)
+        Adj_matrix = SparseTensor(row=edge_index[0], col=edge_index[1],
+                                  sparse_sizes=(num_nodes, num_nodes))
+        Adj_matrix = fill_diag(Adj_matrix, fill_value)
+        Adj = F.normalize(Adj_matrix.to_dense(), p=1, dim=1)
 
         R = torch.matmul(x4, x4.t())
-        R_1 = torch.mul(R, Adj_matrix)
+        R_1 = torch.mul(R, Adj)
         R_2 = torch.sum(R_1, dim=1, keepdim=True)
         local_score = R_2
 
         # Step 4: Global Scoring
-        R_3 = torch.matmul(Adj_matrix, x4)
+        R_3 = torch.matmul(Adj, x4)
         global_score = self.lin2(R_3)
 
         # Step 5: Combine local and global scores
