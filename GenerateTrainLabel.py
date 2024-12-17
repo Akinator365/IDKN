@@ -366,7 +366,7 @@ if __name__ == '__main__':
     with open("Network_Parameters.json", "r") as f:
         network_params = json.load(f)
     # 每种图的数量
-    num_graph = 1
+    num_graph = 32
     # 图的节点数量
     num_nodes = 1000
     # 图的节点数量浮动范围
