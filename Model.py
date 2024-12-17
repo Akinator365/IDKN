@@ -17,7 +17,7 @@ class IDKN(torch.nn.Module):
         self.conv2 = GATConv( 32, 4, heads=4, concat=True, negative_slope=0.2, dropout=0.1)
         self.conv3 = GATConv( 16, 4, heads=2, concat=True, negative_slope=0.2, dropout=0.2)
 
-        self.lin1 = Linear(7, 1, bias=True)
+        self.lin1 = Linear(10, 1, bias=True)
         self.lin2 = Linear(8, 1, bias=False)
 
         self.activation = nn.ReLU()

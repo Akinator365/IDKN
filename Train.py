@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 
 import numpy as np
@@ -14,64 +15,6 @@ from torch_geometric.utils import dense_to_sparse, from_networkx
 from Model import *
 from Utils import *
 
-
-class GraphDataset(InMemoryDataset):
-    def __init__(self, root, adj_path, features_path, labels_path, network_type, num_graphs, transform=None, pre_transform=None):
-        # 加载数据路径
-        self.adj_path = adj_path  # 邻接矩阵
-        self.features_path = features_path  # 节点特征
-        self.labels_path =  labels_path # 标签
-        self.network_type = network_type  # 网络类型
-        self.num_graphs = num_graphs
-        super(GraphDataset, self).__init__(root, transform, pre_transform)
-
-        # 强制调用 process()
-        self.process()
-
-    @property
-    def raw_file_names(self):
-        return []
-
-    @property
-    def processed_file_names(self):
-        return ['data.pt']
-
-    def process(self):
-        data_list = []  # 用于存储多个图的数据
-        print("Processing graphs...")
-        for type in self.network_type:
-            print(f'Processing {type} graphs...')
-            for id in range(self.num_graphs):
-                network_name = f"{type}_1000_{id}"
-                adj_path = os.path.join(self.adj_path, type + '_graph', network_name + '_adj.npy')
-                features_path = os.path.join(self.features_path, type + '_graph', network_name + '_features.npy')
-                labels_path = os.path.join(self.labels_path, type + '_graph', network_name + '_labels.npy')
-                adj_matrix = pickle_read(adj_path)
-                node_features = np.load(features_path)
-                labels = np.load(labels_path)
-
-                # 假设 adj_matrix 是一个邻接矩阵，我们需要将其转为边索引格式
-                edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0]  # 转为 edge_index 格式
-
-                # 转换为 PyTorch 张量
-                x = torch.tensor(node_features, dtype=torch.float)  # 节点特征
-                y = torch.tensor(labels, dtype=torch.float)  # 标签
-
-                # 创建 PyTorch Geometric 的 Data 对象
-                data = Data(x=x, edge_index=edge_index, y=y)
-
-                # 将图数据添加到 data_list 中
-                data_list.append(data)
-
-            # 检查是否成功创建了图数据
-            if not data_list:
-                raise ValueError("No valid data was processed.")
-
-            # 将图数据保存为处理后的文件
-            data, slices = self.collate(data_list)
-            torch.save((data, slices), self.processed_paths[0])
-def download(self):
-        pass
 
 def test(loader):
     model.eval()
@@ -121,29 +64,24 @@ if __name__ == '__main__':
     features_path = TRAIN_FEATURES_PATH
     labels_path = TRAIN_LABELS_PATH
     roles_path = TRAIN_ROLES_PATH
-    #Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
-    Synthetic_Type = ['BA']
-    num_graphs = 100
 
-    # 假设已经有三个 .npy 文件： adj.npy, feature.npy, label.npy
-    #train_dataset = GraphDataset(
-    #    root='./data',
-    #    adj_path=adj_path,
-    #    features_path=features_path,
-    #    labels_path=labels_path,
-    #    network_type=Synthetic_Type,
-    #    num_graphs=num_graphs
-    #)
+    # 从文件中读取参数
+    with open("Network_Parameters_small.json", "r") as f:
+        network_params = json.load(f)
+
+    num_graphs = 32
+
     data_list = []  # 用于存储多个图的数据
     print("Processing graphs...")
-    for type in Synthetic_Type:
-        print(f'Processing {type} graphs...')
+    for network in network_params:
+        network_type = network_params[network]['type']
+        print(f'Processing {network} graphs...')
         for id in range(num_graphs):
-            network_name = f"{type}_1000_{id}"
-            single_adj_path = os.path.join(adj_path, type + '_graph', network_name + '_adj.npy')
-            single_features_path = os.path.join(features_path, type + '_graph', network_name + '_features.npy')
-            single_labels_path = os.path.join(labels_path, type + '_graph', network_name + '_labels.npy')
-            single_roles_path = os.path.join(roles_path, type + '_graph', network_name + '_roles.npy')
+            network_name = f"{network}_{id}"
+            single_adj_path = os.path.join(adj_path, network_type + '_graph', network, network_name + '_adj.npy')
+            single_features_path = os.path.join(features_path, network_type + '_graph', network, network_name + '_features.npy')
+            single_labels_path = os.path.join(labels_path, network_type + '_graph', network, network_name + '_labels.npy')
+            single_roles_path = os.path.join(roles_path, network_type + '_graph', network, network_name + '_roles.npy')
 
             adj_matrix = pickle_read(single_adj_path)
             node_features = np.load(single_features_path)
@@ -158,9 +96,24 @@ if __name__ == '__main__':
             # 对节点角色特征进行归一化
             roles = min_max_normalization(roles)  # 归一化操作
 
+            # 目标长度
+            target_length = 10
+
+            # 当前矩阵的列数
+            current_length = roles.shape[1]
+
+            # 如果列数小于目标长度，进行填充
+            if current_length < target_length:
+                # 在原矩阵后面添加零列
+                padding = np.zeros((roles.shape[0], target_length - current_length))
+                roles_padded = np.hstack((roles, padding))
+            else:
+                # 如果列数大于等于目标长度，直接截断
+                roles_padded = roles[:, :target_length]
+
             # 转换为 PyTorch 张量
             x1 = torch.tensor(node_features, dtype=torch.float)  # 节点特征
-            x2 = torch.tensor(roles, dtype=torch.float)  # 节点角色特征
+            x2 = torch.tensor(roles_padded, dtype=torch.float)  # 节点角色特征
             y = torch.tensor(labels, dtype=torch.float)  # 标签
 
             # 计算节点数
@@ -175,9 +128,11 @@ if __name__ == '__main__':
     # 使用 DataLoader 加载数据集
     #train_loader = DataLoader(train_dataset, batch_size=5, shuffle=True)
     # 将data_list分为训练集和测试集
-    train_dataset = data_list[:round(num_graphs * 0.9)]
-    test_dataset = data_list[round(num_graphs * 0.9):]
-    train_loader = DataLoader(train_dataset, batch_size=5, shuffle=True)
+    # 打乱数据
+    np.random.shuffle(data_list)
+    train_dataset = data_list[:round(len(data_list) * 0.8)]
+    test_dataset = data_list[round(len(data_list) * 0.8):]
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     print(f"Number of batches in train_loader: {len(train_loader)}")
