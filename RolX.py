@@ -130,7 +130,12 @@ if __name__ == '__main__':
             network_name = f"{network}_{id}"
             graph_path = os.path.join(TRAIN_DATASET_PATH, network_type + '_graph', network, network_name + '.txt')
             roles_path = os.path.join(TRAIN_ROLES_PATH, network_type + '_graph', network, network_name + "_roles.npy")
-
+            # 如果文件已经存在，则跳过
+            if os.path.exists(roles_path):
+                print(f"File {roles_path} already exists, skipping...")
+                continue
+            else:
+                print(f"Processing {network_name}")
             G = nx.read_edgelist(graph_path)
             # 提取特征
             feature_extractor = RecursiveFeatureExtractor(G)
