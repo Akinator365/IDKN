@@ -66,7 +66,7 @@ if __name__ == '__main__':
     roles_path = TRAIN_ROLES_PATH
 
     # 从文件中读取参数
-    with open("Network_Parameters_small.json", "r") as f:
+    with open("Network_Parameters.json", "r") as f:
         network_params = json.load(f)
 
     data_list = []  # 用于存储多个图的数据
