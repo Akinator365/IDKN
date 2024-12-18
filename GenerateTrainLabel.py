@@ -410,7 +410,7 @@ if __name__ == '__main__':
 
     for network in network_params:
         network_type = network_params[network]['type']
-        print(f'Processing {network_type} graphs...')
+        print(f'Processing {network} graphs...')
         for id in range(num_graph):
             #network_name = 'DNCEmails'
             network_name = f"{network}_{id}"

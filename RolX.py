@@ -1,3 +1,4 @@
+import json
 import os
 import networkx as nx
 import numpy as np
@@ -114,20 +115,21 @@ if __name__ == '__main__':
     REALWORLD_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld')
     TRAIN_ROLES_PATH = os.path.join(os.getcwd(), 'data', 'roles', 'train')
     REALWORLD_ROLES_PATH = os.path.join(os.getcwd(), 'data', 'roles', 'realworld')
-    # Synthetic_Type = ['BA', 'ER', 'PLC', 'WS']
-    Synthetic_Type = ['BA']
+
+    # 从文件中读取参数
+    with open("Network_Parameters.json", "r") as f:
+        network_params = json.load(f)
 
     # 每种图的数量
-    num_graph = 100
-    # 图的节点数量
-    num_nodes = 1000
+    num_graph = 32
 
-    for type in Synthetic_Type:
-        print(f'Processing {type} graphs...')
+    for network in network_params:
+        network_type = network_params[network]['type']
+        print(f'Processing {network} graphs...')
         for id in range(num_graph):
-            network_name = f"{type}_1000_{id}"
-            graph_path = os.path.join(TRAIN_DATASET_PATH, type + '_graph', network_name + '.txt')
-            roles_path = os.path.join(TRAIN_ROLES_PATH, type + '_graph', network_name + "_roles.npy")
+            network_name = f"{network}_{id}"
+            graph_path = os.path.join(TRAIN_DATASET_PATH, network_type + '_graph', network, network_name + '.txt')
+            roles_path = os.path.join(TRAIN_ROLES_PATH, network_type + '_graph', network, network_name + "_roles.npy")
 
             G = nx.read_edgelist(graph_path)
             # 提取特征
