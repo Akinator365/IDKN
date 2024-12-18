@@ -193,22 +193,18 @@ if __name__ == '__main__':
     REALWORLD_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld')
     TRAIN_FEATURES_PATH = os.path.join(os.getcwd(), 'data', 'features', 'train')
     REALWORLD_FEATURES_PATH = os.path.join(os.getcwd(), 'data', 'features', 'realworld')
-    TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
-    REALWORLD_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'realworld')
 
     # 从文件中读取参数
     with open("Network_Parameters.json", "r") as f:
         network_params = json.load(f)
 
-    num_graph = 32
-
     for network in network_params:
         network_type = network_params[network]['type']
+        num_graph = network_params[network]['num']
         print(f'Processing {network} graphs...')
         for id in range(num_graph):
             network_name = f"{network}_{id}"
             feature_path = os.path.join(TRAIN_FEATURES_PATH, network_type + '_graph', network, network_name + "_features.npy")
-            adj_path = os.path.join(TRAIN_ADJ_PATH, network_type + '_graph', network, network_name + "_adj.npy")
 
             # 如果文件已经存在，则跳过
             if os.path.exists(feature_path):
@@ -223,16 +219,6 @@ if __name__ == '__main__':
             df = extract_graph_features(G)
             print(f'Obtained features of {network_name}')
             #print(df)
-
-            # 将特征转换为numpy数组，并保存为npy文件
-            feature_array = df.to_numpy()
-            os.makedirs(os.path.dirname(feature_path), exist_ok=True)
-            np.save(feature_path, feature_array)
-
-            g_adjacent_matrix = np.array(nx.adjacency_matrix(G).todense())
-            os.makedirs(os.path.dirname(adj_path), exist_ok=True)
-            pickle_save(adj_path, g_adjacent_matrix)
-            print(f'pickle of {network_name} saved')
 
 
 

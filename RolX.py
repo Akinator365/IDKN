@@ -120,11 +120,9 @@ if __name__ == '__main__':
     with open("Network_Parameters.json", "r") as f:
         network_params = json.load(f)
 
-    # 每种图的数量
-    num_graph = 32
-
     for network in network_params:
         network_type = network_params[network]['type']
+        num_graph = network_params[network]['num']
         print(f'Processing {network} graphs...')
         for id in range(num_graph):
             network_name = f"{network}_{id}"

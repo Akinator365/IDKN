@@ -63,10 +63,9 @@ if __name__ == '__main__':
     # 从文件中读取参数
     with open("Network_Parameters.json", "r") as f:
         network_params = json.load(f)
-    # 每种图的数量
-    num_graph = 32
     # 图的节点数量浮动范围
     scope = 100
     for network in network_params:
+        num_graph = network_params[network]['num']
         for id in range(num_graph):
             GenerateTrainData(TRAIN_DATASET_PATH, id, network, network_params[network], scope)

@@ -69,14 +69,13 @@ if __name__ == '__main__':
     with open("Network_Parameters_small.json", "r") as f:
         network_params = json.load(f)
 
-    num_graphs = 32
-
     data_list = []  # 用于存储多个图的数据
     print("Processing graphs...")
     for network in network_params:
         network_type = network_params[network]['type']
+        num_graph = network_params[network]['num']
         print(f'Processing {network} graphs...')
-        for id in range(num_graphs):
+        for id in range(num_graph):
             network_name = f"{network}_{id}"
             single_adj_path = os.path.join(adj_path, network_type + '_graph', network, network_name + '_adj.npy')
             single_features_path = os.path.join(features_path, network_type + '_graph', network, network_name + '_features.npy')

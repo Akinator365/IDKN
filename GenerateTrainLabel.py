@@ -323,7 +323,7 @@ def new_SIR_Multiple(graph_path, labels_path, network_params):
     influence = {}
 
     # 使用 multiprocessing.Pool 并行计算每个节点的影响力
-    with Pool(processes=60) as pool:
+    with Pool(processes=16) as pool:
         # 提交任务给进程池
         results = pool.starmap(
             simulate_node,
@@ -365,8 +365,6 @@ if __name__ == '__main__':
     # 从文件中读取参数
     with open("Network_Parameters.json", "r") as f:
         network_params = json.load(f)
-    # 每种图的数量
-    num_graph = 32
     # 图的节点数量
     num_nodes = 1000
     # 图的节点数量浮动范围
@@ -410,6 +408,7 @@ if __name__ == '__main__':
 
     for network in network_params:
         network_type = network_params[network]['type']
+        num_graph = network_params[network]['num']
         print(f'Processing {network} graphs...')
         for id in range(num_graph):
             #network_name = 'DNCEmails'
