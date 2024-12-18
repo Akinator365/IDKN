@@ -77,7 +77,7 @@
         "m": 5,
         "beta": 0.25,
         "gamma": 0.1,
-        "simulations": 10000
+        "simulations": 8000
     },
     "BA_2000_8": {
         "type": "BA",
@@ -85,7 +85,7 @@
         "m": 8,
         "beta": 0.15,
         "gamma": 0.1,
-        "simulations": 10000
+        "simulations": 5000
     },
     "BA_2000_15": {
         "type": "BA",
@@ -93,7 +93,7 @@
         "m": 15,
         "beta": 0.1,
         "gamma": 0.1,
-        "simulations": 10000
+        "simulations": 5000
     },
     "BA_5000_3": {
         "type": "BA",
@@ -101,7 +101,7 @@
         "m": 3,
         "beta": 0.3,
         "gamma": 0.1,
-        "simulations": 10000
+        "simulations": 8000
     },
     "BA_5000_5": {
         "type": "BA",
@@ -109,7 +109,7 @@
         "m": 5,
         "beta": 0.25,
         "gamma": 0.1,
-        "simulations": 10000
+        "simulations": 5000
     },
     "BA_5000_8": {
         "type": "BA",
@@ -117,7 +117,7 @@
         "m": 8,
         "beta": 0.15,
         "gamma": 0.1,
-        "simulations": 10000
+        "simulations": 3000
     },
     "BA_5000_15": {
         "type": "BA",
@@ -125,7 +125,7 @@
         "m": 15,
         "beta": 0.15,
         "gamma": 0.1,
-        "simulations": 10000
+        "simulations": 2000
     },
     "ER": {
         "type": "ER",
