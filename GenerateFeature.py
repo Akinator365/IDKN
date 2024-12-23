@@ -219,6 +219,10 @@ if __name__ == '__main__':
             df = extract_graph_features(G)
             print(f'Obtained features of {network_name}')
             #print(df)
+            os.makedirs(os.path.dirname(feature_path), exist_ok=True)
+            # 将特征转换为numpy数组，并保存为npy文件
+            features_array = df.to_numpy()
+            np.save(feature_path, features_array)
 
 
 

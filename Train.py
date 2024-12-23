@@ -8,7 +8,7 @@ from scipy import stats
 from sympy import false
 from torch.cuda import graph
 from torch.optim.lr_scheduler import StepLR
-from torch_geometric.data import InMemoryDataset, Data
+from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader   # 替换导入路径
 from torch_geometric.utils import dense_to_sparse, from_networkx
 
@@ -20,13 +20,14 @@ def test(loader):
     model.eval()
     loss = 0
     rank = 0
+    tau_sum = 0
     for data in loader:  # Iterate in batches over the training/test dataset.
         data = data.to(device)
         out = model(data.x, data.x, data.edge_index, data.num_nodes)
-        loss += criterion(out, data.y.view(-1, 1))
+        #loss += criterion(out, data.y.view(-1, 1))
+        loss += criterion(out, data.y)
         rank += kendall_rank_coffecient(out.cpu().detach().numpy(), data.y.view(-1, 1).cpu().detach().numpy(),
                                         data.num_graphs, data)
-
     return loss / len(loader.dataset), rank / len(loader.dataset)
 
 
@@ -66,7 +67,7 @@ if __name__ == '__main__':
     roles_path = TRAIN_ROLES_PATH
 
     # 从文件中读取参数
-    with open("Network_Parameters.json", "r") as f:
+    with open("Network_Parameters_small.json", "r") as f:
         network_params = json.load(f)
 
     data_list = []  # 用于存储多个图的数据
@@ -134,7 +135,7 @@ if __name__ == '__main__':
     np.random.shuffle(data_list)
     train_dataset = data_list[:round(len(data_list) * 0.8)]
     test_dataset = data_list[round(len(data_list) * 0.8):]
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     print(f"Number of batches in train_loader: {len(train_loader)}")
@@ -161,12 +162,13 @@ if __name__ == '__main__':
 
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = IDKN_simple().to(device)
     #model = IDKN().to(device)
     #model = IDKN_cat().to(device)
-    model = IDKN_Attention().to(device)
+    #model = IDKN_Attention().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
     criterion = torch.nn.MSELoss(reduction='mean')
-    scheduler_1 = StepLR(optimizer, step_size=50, gamma=0.3)
+    #scheduler_1 = StepLR(optimizer, step_size=50, gamma=0.3)
     epoch_num = 200
     checkpoint_interval = 5
     date = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -191,7 +193,8 @@ if __name__ == '__main__':
         for data in train_loader:  # Iterate in batches over the training dataset.
             data = data.to(device)
             out = model(data.x, data.x2, data.edge_index, data.num_nodes)
-            loss = criterion(out, data.y.view(-1, 1))
+            #loss = criterion(out, data.y.view(-1, 1))
+            loss = criterion(out, data.y)
 
             #print(loss)
             #print(out.shape)
