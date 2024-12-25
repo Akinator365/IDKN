@@ -323,7 +323,7 @@ def new_SIR_Multiple(graph_path, labels_path, network_params):
     influence = {}
 
     # 使用 multiprocessing.Pool 并行计算每个节点的影响力
-    with Pool(processes=16) as pool:
+    with Pool(processes=30) as pool:
         # 提交任务给进程池
         results = pool.starmap(
             simulate_node,
