@@ -1,3 +1,5 @@
+import numpy as np
+import scipy as sp
 from torch_geometric.nn import GATConv, GCNConv
 from torch_geometric.utils import add_self_loops, degree
 from torch_geometric.datasets import Planetoid
@@ -6,6 +8,9 @@ import torch.nn.functional as F
 from torch.nn import Linear
 import torch.nn as nn
 from torch_sparse import SparseTensor, matmul, fill_diag, sum, mul
+from torch_geometric.nn import GCNConv
+
+from Utils import normalize_adj
 
 
 class IDKN_simple(nn.Module):
@@ -197,3 +202,140 @@ class IDKN_Attention(nn.Module):
         # Step 5: Combine local and global scores
         ranking_scores = torch.add(local_score, global_score)
         return ranking_scores
+
+
+class GNN(torch.nn.Module):
+    def __init__(self, input_feature, output_feature):
+        super(GNN, self).__init__()
+        self.w = nn.Parameter(torch.empty(size=(input_feature, output_feature)))
+        self.a = nn.Parameter(torch.empty(size=(1, output_feature)))
+        self.sigmod = torch.nn.Sigmoid()
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # nn.init.xavier_uniform_(self.w.data,gain=1.414)
+        # nn.init.xavier_uniform_(self.a.data,gain=1.414)
+        for param in self.parameters():
+            nn.init.xavier_uniform_(param)
+
+    def forward(self, x, adj):
+        # adj=torch.Tensor(adj.numpy()+np.identity(adj.shape[0]))
+        adj = torch.FloatTensor(normalize_adj(sp.csr_matrix(adj) + sp.eye(adj.shape[0])).todense())
+        x = torch.mm(adj, x)
+        x = torch.mm(x, self.w)
+        # x=x.add(self.a)
+        x = torch.relu(x)
+        return x
+
+
+class GAE(nn.Module):  # 编码器
+    def __init__(self, n_total_features, n_latent, p_drop=0.):
+        super(GAE, self).__init__()
+        self.n_total_features = n_total_features
+        self.conv1 = GNN(self.n_total_features, 256)
+
+        self.conv2 = GNN(128, 24)
+
+        self.conv3 = GNN(256, n_latent)
+        self.conv4 = GNN(n_latent, self.n_total_features)
+        self.fc1 = torch.nn.Linear(n_latent, 256)
+        self.fc2 = torch.nn.Linear(256, 1)
+
+    def forward(self, x, adj):  # 实践中一般采取多层的GCN来编码
+
+        x = self.conv1(x, adj)
+        # x = self.conv2(x, adj)
+        x = self.conv3(x, adj)  # 经过三层GCN后得到节点的表示
+        A = self.fc1(x)  # 直接算点积'
+        A = self.fc2(A)
+        # A = torch.sigmoid(A)
+        return x, A
+
+
+class CNNnet(torch.nn.Module):
+    def __init__(self):
+        super(CNNnet, self).__init__()
+        self.conv1 = torch.nn.Sequential(
+            torch.nn.Conv2d(in_channels=1,
+                            out_channels=10,
+                            kernel_size=(3, 3),
+                            stride=1,
+                            padding=1),
+
+            torch.nn.LeakyReLU(),
+            torch.nn.MaxPool2d(kernel_size=(2, 2))
+
+        )
+        self.conv2 = torch.nn.Sequential(
+            torch.nn.Conv2d(in_channels=10,
+                            out_channels=20,
+                            kernel_size=(3, 3),
+                            stride=1,
+                            padding=1),
+
+            torch.nn.LeakyReLU(),
+            torch.nn.MaxPool2d(kernel_size=(2, 2))
+
+        )
+        self.fc = torch.nn.Linear(980, 6)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.fc(x.view(x.size(0), -1))
+        return x
+
+
+class GNN(torch.nn.Module):
+    def __init__(self, input_feature, output_feature):
+        super(GNN, self).__init__()
+        self.w = nn.Parameter(torch.empty(size=(input_feature, output_feature)))
+        self.a = nn.Parameter(torch.empty(size=(1, output_feature)))
+        self.sigmod = torch.nn.Sigmoid()
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # nn.init.xavier_uniform_(self.w.data,gain=1.414)
+        # nn.init.xavier_uniform_(self.a.data,gain=1.414)
+        for param in self.parameters():
+            nn.init.xavier_uniform_(param)
+
+    def forward(self, x, adj):
+        adj = torch.Tensor(adj.numpy() + np.identity(adj.shape[0]))
+        # adj=torch.FloatTensor(normalize_adj(sp.csr_matrix(adj)+ sp.eye(adj.shape[0])).todense())
+        x = torch.mm(adj, x)
+        x = torch.mm(x, self.w)
+        x = x.add(self.a)
+        x = torch.relu(x)
+        return x
+
+
+class CGNN(torch.nn.Module):
+    def __init__(self):
+        super(CGNN, self).__init__()
+        self.layer1 = CNNnet()
+        self.layer2 = GNN(48, 6)
+        self.layer3 = GNN(6, 12)
+        self.fc = torch.nn.Linear(12, 1)
+
+    def forward(self, x, adj):
+        # x=self.layer1(x)
+        x = self.layer2(x, adj)
+        x = self.layer3(x, adj)
+        # x=self.layer4(x,adj)
+
+        x = self.fc(x.view(x.size(0), -1))
+        x = torch.relu(x)
+        x = x.flatten()
+
+        return x
+
+class ListMLE(nn.Module):
+    def __init__(self):
+        super(ListMLE, self).__init__()
+    def forward(self, outputs, labels):
+        scores = torch.zeros_like(outputs)
+        for t in range(scores.size()[0]):
+            scores[t] = torch.logcumsumexp(outputs[t, labels[t]], dim=0)
+        loss = torch.mean(scores - outputs)
+        return loss
