@@ -7,6 +7,7 @@ import torch
 from torch_geometric.graphgym import optim
 
 from Model import GAE
+from Utils import pickle_read
 
 
 def train(epoch):
@@ -33,24 +34,23 @@ def train(epoch):
     return loss_train.data.item()
 
 
-# def compute_test():
-#     model.eval()
-#     output = model(node_feature, adj)
-#     loss_test = torch.nn.functional.mse_loss(output, label_t)
-#
-#     print("Test set results:",
-#           "loss= {}".format(loss_test.data.item()),
-#           )
-
-
 if __name__ == '__main__':
 
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
     ba_path = os.path.join(TRAIN_ADJ_PATH, 'BA_graph', 'BA_500_3', 'BA_500_3_0_adj.npy')
 
-    adj_BA = np.load(ba_path)
+    adj_BA = pickle_read(ba_path)
     adj_BA = torch.FloatTensor(adj_BA)
 
+    # 保存路径设置
+    best_embedding_path = os.path.join(os.getcwd(), 'best_embedding.npy')
+    best_loss_path = os.path.join(os.getcwd(), 'best_loss.txt')
+
+    # 初始化变量
+    best_node_feature = None
+    best_loss = float('inf')
+
+    # Training setup
     random.seed(17)
     np.random.seed(17)
     torch.manual_seed(17)
@@ -64,19 +64,32 @@ if __name__ == '__main__':
     best = 1000 + 1
     best_epoch = 0
 
+
     for epoch in range(500):
         loss_values.append(train(epoch))
-        if loss_values[-1] < best:
-            best = loss_values[-1]
+
+        # 更新最优结果
+        if loss_values[-1] < best_loss:
+            best_loss = loss_values[-1]
             best_epoch = epoch
-            bad_counter = 0
-        else:
-            bad_counter += 1
+            # 获取当前最优嵌入
+            model.eval()
+            best_node_feature, _ = model(torch.tensor(np.identity(adj_BA.shape[0])).float(), adj_BA)
+
+            # 保存最优嵌入
+            np.save(best_embedding_path, best_node_feature.detach().numpy())
+            with open(best_loss_path, 'w') as f:
+                f.write(f"Best Loss: {best_loss}\nEpoch: {best_epoch}")
 
         if bad_counter == 100:
-            bad_counter += 1
+            break
+
     print("Optimization Finished!")
     print("Total time elapsed: {}s".format(time.time() - t_total))
-    # compute_test()
+
+    # 输出最优结果
+    print(f"Best Loss: {best_loss} at Epoch: {best_epoch}")
+    print(f"Best embedding saved to: {best_embedding_path}")
+
     model.eval()
     node_feature_BA, A = model(torch.tensor(np.identity(adj_BA.shape[0])).float(), adj_BA)
