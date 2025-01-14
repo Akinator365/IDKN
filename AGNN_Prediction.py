@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import random
 import time
@@ -7,6 +8,9 @@ import numpy as np
 import torch
 from scipy.stats import kendalltau
 from torch_geometric.graphgym import optim
+from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
+from torch_geometric.utils import dense_to_sparse
 
 from Model import CGNN
 from Utils import pickle_read
@@ -108,56 +112,119 @@ def load_model(checkpoint_path, model_class, device):
 if __name__ == '__main__':
 
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
-    TRAIN_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'train')
-    ba_path = os.path.join(TRAIN_ADJ_PATH, 'BA_graph', 'BA_500_3', 'BA_500_3_0_adj.npy')
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
-    label_path = os.path.join(TRAIN_LABELS_PATH, 'BA_graph', 'BA_500_3', 'BA_500_3_0_labels.npy')
+    TRAIN_EMBEDDING_PATH = os.path.join(os.getcwd(), 'data', 'embedding', 'train')
+    adj_path = TRAIN_ADJ_PATH
+    labels_path = TRAIN_LABELS_PATH
+    embedding_path = TRAIN_EMBEDDING_PATH
 
     date = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     CHECKPOINTS_PATH = os.path.join(os.getcwd(), 'training', 'IDKN', date)
     os.makedirs(CHECKPOINTS_PATH, exist_ok=True)
 
-    lable_BA = np.load("./lable_BA_1000_4.npy")
-    lable_BA_t = torch.tensor(lable_BA).float()
+    # 从文件中读取参数
+    with open("Network_Parameters_small.json", "r") as f:
+        network_params = json.load(f)
 
-    adj_BA = pickle_read(ba_path)
-    adj_BA = torch.FloatTensor(adj_BA)
+    data_list = []  # 用于存储多个图的数据
+    print("Processing graphs...")
+    for network in network_params:
+        network_type = network_params[network]['type']
+        num_graph = network_params[network]['num']
+        print(f'Processing {network} graphs...')
+        for id in range(num_graph):
+            network_name = f"{network}_{id}"
+            single_adj_path = os.path.join(adj_path, network_type + '_graph', network, network_name + '_adj.npy')
+            single_labels_path = os.path.join(labels_path, network_type + '_graph', network, network_name + '_labels.npy')
+            single_embedding_path = os.path.join(embedding_path, network_type + '_graph', network, network_name + '_embedding.npy')
 
-    # 保存路径设置
-    best_embedding_path = os.path.join(os.getcwd(), 'best_embedding.npy')
-    best_loss_path = os.path.join(os.getcwd(), 'best_loss.txt')
+            node_feature = np.load(single_embedding_path)
+            # 转换为 PyTorch 张量
+            x = torch.FloatTensor(node_feature)
 
-    node_feature = np.load(best_embedding_path)
-    # 转换为 PyTorch 张量
-    node_feature = torch.FloatTensor(node_feature)
-    label = np.load(label_path)
-    label_t =  torch.tensor(label).float()
+            adj_matrix = pickle_read(single_adj_path)
+            adj = torch.FloatTensor(adj_matrix)
+            labels = np.load(single_labels_path)
 
+            # adj_matrix 是一个邻接矩阵，我们需要将其转为边索引格式
+            edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0]  # 转为 edge_index 格式
+
+            # 计算节点数
+            num_nodes = adj_matrix.shape[0] # 根据 adj_matrix 计算节点数：num_nodes = adj_matrix.shape[0]
+
+            # 转换为 PyTorch 张量
+            y = torch.tensor(labels, dtype=torch.float)  # 标签
+
+            # 创建 PyTorch Geometric 的 Data 对象
+            data = Data(x=x, edge_index=edge_index, num_nodes=num_nodes, adj=adj, y=y)
+
+            #data = Data(x=x, edge_index=edge_index, num_nodes=num_nodes, adj=adj, y=y)
+
+            # 将图数据添加到 data_list 中
+            data_list.append(data)
+
+    # 将data_list分为训练集和测试集
+    # 打乱数据
+    np.random.shuffle(data_list)
+    train_dataset = data_list[:round(len(data_list) * 0.8)]
+    test_dataset = data_list[round(len(data_list) * 0.8):]
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     random.seed(17)
     np.random.seed(17)
     torch.manual_seed(17)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = CGNN()
+    model = CGNN().to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
 
     t_total = time.time()
     loss_values = []
     bad_counter = 0
-    best = 10000 + 1
+    best = float('inf')  # 初始化为正无穷
     best_epoch = 0
 
     for epoch in range(3000):
-        loss_values.append(train(epoch, node_feature, adj_BA, label_t))
-        if loss_values[-1] < best:
-            best = loss_values[-1]
+        model.train()
+        total_loss = 0
+        total_loss_val = 0
+        for data in train_loader:  # Batch training with DataLoader
+            data = data.to(device)  # Move batch to GPU/CPU
+            out = model(data.x, data.adj)  # Forward pass
+            loss = listMLE(out, data.y) # Compute loss
+            loss_val = torch.nn.functional.mse_loss(out, data.y)
+
+            optimizer.zero_grad()  # Clear gradients
+            loss.backward()  # Backward pass
+            optimizer.step()  # Update parameters
+
+            total_loss += loss.item()
+            total_loss_val += loss_val.item()
+
+        # Calculate average loss for the epoch
+        avg_loss = total_loss / len(train_loader)
+        avg_loss_val = total_loss_val / len(train_loader)
+
+        print('Epoch: {:04d}'.format(epoch + 1),
+              'loss_train: {}'.format(avg_loss),
+
+              'loss_val: {}'.format(avg_loss_val),
+
+              'time: {}s'.format(time.time() - t_total))
+
+        if avg_loss < best:
+            best = avg_loss
             best_epoch = epoch
             bad_counter = 0
             save_model(epoch, CHECKPOINTS_PATH)
         else:
             bad_counter += 1
 
-        if bad_counter == 100:
-            bad_counter += 1
+        if bad_counter == 50:
+            print("Early stopping triggered.")
+            break
     print("Optimization Finished!")
     print("Total time elapsed: {}s".format(time.time() - t_total))
+    print("Best Epoch: {:04d} with loss: {:.4f}".format(best_epoch, best))
+    print("Best model saved in: ", CHECKPOINTS_PATH)

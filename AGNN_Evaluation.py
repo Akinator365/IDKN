@@ -34,8 +34,8 @@ if __name__ == '__main__':
 
     # 加载模型检查点
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    best = 2999
-    checkpoint_path = f"./training/IDKN/2025-01-13_10-57-50/checkpoint_{best}_epoch.pkl"
+    best = 9
+    checkpoint_path = f"./training/IDKN/2025-01-14_20-16-52/checkpoint_{best}_epoch.pkl"
 
     model = load_model(checkpoint_path, CGNN, device)
 

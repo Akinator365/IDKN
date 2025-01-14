@@ -9,7 +9,7 @@ from sympy import false
 from torch.cuda import graph
 from torch.optim.lr_scheduler import StepLR
 from torch_geometric.data import Data
-from torch_geometric.loader import DataLoader   # 替换导入路径
+from torch_geometric.loader import DataLoader
 from torch_geometric.utils import dense_to_sparse, from_networkx
 
 from Model import *
