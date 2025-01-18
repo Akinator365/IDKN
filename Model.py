@@ -246,7 +246,7 @@ class GAE(nn.Module):  # 编码器
         x = self.conv1(x, adj)
         # x = self.conv2(x, adj)
         x = self.conv3(x, adj)  # 经过三层GCN后得到节点的表示
-        A = self.fc1(x)  # 直接算点积'
+        A = self.fc1(x)  # 直接算点积
         A = self.fc2(A)
         # A = torch.sigmoid(A)
         return x, A

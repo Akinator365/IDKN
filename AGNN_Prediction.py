@@ -10,7 +10,7 @@ from scipy.stats import kendalltau
 from torch_geometric.graphgym import optim
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-from torch_geometric.utils import dense_to_sparse
+from torch_geometric.utils import dense_to_sparse, to_dense_adj
 
 from Model import CGNN
 from Utils import pickle_read
@@ -65,35 +65,13 @@ def listMLE(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VAL
     return listmle
 
 
-def train(epoch, node_feature, adj, label_t):
-    t = time.time()
-    model.train()
-
-    output = model(node_feature, adj)
-    loss_train = listMLE(output, label_t)
-    # loss_train = torch.nn.functional.mse_loss(output, label_t)
-    optimizer.zero_grad()
-    loss_train.backward()
-    optimizer.step()
-    model.eval()
-    output = model(node_feature, adj)
-
-    loss_val = torch.nn.functional.mse_loss(output, label_t)
-
-    print('Epoch: {:04d}'.format(epoch + 1),
-          'loss_train: {}'.format(loss_train.data.item()),
-
-          'loss_val: {}'.format(loss_val.data.item()),
-
-          'time: {}s'.format(time.time() - t))
-    return loss_train.data.item()
-
 def save_model(epoch, path):
     checkpoint = {"model_state_dict": model.state_dict(),
                   "optimizer_state_dict": optimizer.state_dict(),
                   "epoch": epoch}
     path_checkpoint = os.path.join(path, "checkpoint_{}_epoch.pkl".format(epoch))
     torch.save(checkpoint, path_checkpoint)
+
 
 def load_model(checkpoint_path, model_class, device):
     """
@@ -166,10 +144,10 @@ if __name__ == '__main__':
     # 将data_list分为训练集和测试集
     # 打乱数据
     np.random.shuffle(data_list)
-    train_dataset = data_list[:round(len(data_list) * 0.8)]
-    test_dataset = data_list[round(len(data_list) * 0.8):]
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    # train_dataset = data_list[:round(len(data_list) * 0.8)]
+    # test_dataset = data_list[round(len(data_list) * 0.8):]
+    train_loader = DataLoader(data_list, batch_size=1, shuffle=True)
+    # test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     random.seed(17)
     np.random.seed(17)
@@ -191,8 +169,12 @@ if __name__ == '__main__':
         total_loss_val = 0
         for data in train_loader:  # Batch training with DataLoader
             data = data.to(device)  # Move batch to GPU/CPU
-            out = model(data.x, data.adj)  # Forward pass
+            # 转回稠密邻接矩阵
+            adj_matrix_reconstructed = to_dense_adj(data.edge_index, max_num_nodes=data.num_nodes).squeeze(0)
+
+            out = model(data.x, adj_matrix_reconstructed)  # Forward pass
             loss = listMLE(out, data.y) # Compute loss
+            #loss = torch.nn.functional.mse_loss(out, data.y)
             loss_val = torch.nn.functional.mse_loss(out, data.y)
 
             optimizer.zero_grad()  # Clear gradients

@@ -1,3 +1,4 @@
+import json
 import os
 
 import numpy as np
@@ -11,39 +12,45 @@ from Utils import pickle_read
 if __name__ == '__main__':
 
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
-    TRAIN_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'train')
-    ba_path = os.path.join(TRAIN_ADJ_PATH, 'BA_graph', 'BA_500_3', 'BA_500_3_0_adj.npy')
+    TRAIN_EMBEDDING_PATH = os.path.join(os.getcwd(), 'data', 'embedding', 'train')
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
-    label_path = os.path.join(TRAIN_LABELS_PATH, 'BA_graph', 'BA_500_3', 'BA_500_3_0_labels.npy')
-
-    lable_BA = np.load("./lable_BA_1000_4.npy")
-    lable_BA_t = torch.tensor(lable_BA).float()
-
-    adj_BA = pickle_read(ba_path)
-    adj_BA = torch.FloatTensor(adj_BA)
-
-    # 保存路径设置
-    best_embedding_path = os.path.join(os.getcwd(), 'best_embedding.npy')
-    best_loss_path = os.path.join(os.getcwd(), 'best_loss.txt')
-
-    node_feature = np.load(best_embedding_path)
-    # 转换为 PyTorch 张量
-    node_feature = torch.FloatTensor(node_feature)
-    label = np.load(label_path)
-    label_t =  torch.tensor(label).float()
 
     # 加载模型检查点
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    best = 9
-    checkpoint_path = f"./training/IDKN/2025-01-14_20-16-52/checkpoint_{best}_epoch.pkl"
+    best = 3
+    checkpoint_path = f"./training/IDKN/2025-01-17_17-17-09/checkpoint_{best}_epoch.pkl"
 
     model = load_model(checkpoint_path, CGNN, device)
 
     model.eval()
-    output = model(node_feature, adj_BA)
 
-    # model_cgnn = CGNN()
-    # model_cgnn.eval()
-    # output = model_cgnn(node_feature, adj_BA)
+    # 从文件中读取参数
+    with open("Network_Parameters_small.json", "r") as f:
+        network_params = json.load(f)
 
-    print(kendalltau(output.detach().numpy(), label_t))
+    print("Processing graphs...")
+    for network in network_params:
+        network_type = network_params[network]['type']
+        num_graph = network_params[network]['num']
+        print(f'Processing {network} graphs...')
+        for id in range(num_graph):
+            network_name = f"{network}_{id}"
+            adj_path = os.path.join(TRAIN_ADJ_PATH, network_type + '_graph', network, f'{network_name}_adj.npy')
+            label_path = os.path.join(TRAIN_LABELS_PATH, network_type + '_graph', network,
+                                      f'{network_name}_labels.npy')
+            embedding_path = os.path.join(TRAIN_EMBEDDING_PATH, network_type + '_graph', network,
+                                          f'{network_name}_embedding.npy')
+
+            adj_BA = pickle_read(adj_path)
+            adj_BA = torch.FloatTensor(adj_BA)
+
+            node_feature = np.load(embedding_path)
+            # 转换为 PyTorch 张量
+            node_feature = torch.FloatTensor(node_feature)
+            label = np.load(label_path)
+            label_t = torch.tensor(label).float()
+
+            output = model(node_feature, adj_BA)
+
+            print(kendalltau(output.detach().numpy(), label_t))
+
