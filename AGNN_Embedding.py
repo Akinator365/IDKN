@@ -9,7 +9,7 @@ from torch.nn.functional import embedding
 from torch_geometric.graphgym import optim
 
 from Model import GAE
-from Utils import pickle_read
+from Utils import pickle_read, normalize_adj_1
 
 
 def train(epoch, adj):
@@ -18,14 +18,19 @@ def train(epoch, adj):
 
     x, A = model(torch.tensor(np.identity(adj.shape[0])).float(), adj)
 
-    loss_train = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro')
+    #loss_train = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro')
+    loss_train = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True))
+
     optimizer.zero_grad()
     loss_train.backward()
     optimizer.step()
-    model.eval()
-    x, A = model(torch.tensor(np.identity(adj.shape[0])).float(), adj)
 
-    loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro')
+    # loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro')
+    # 计算验证损失 (避免梯度计算)
+    model.eval()
+    with torch.no_grad():
+        x, A = model(torch.tensor(np.identity(adj.shape[0])).float(), adj)
+        loss_val = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True))
 
     print('Epoch: {:04d}'.format(epoch + 1),
           'loss_train: {}'.format(loss_train.data.item()),
@@ -70,18 +75,18 @@ if __name__ == '__main__':
             adj_path = os.path.join(TRAIN_ADJ_PATH, network_type + '_graph', network, network_name + '_adj.npy')
             adj = pickle_read(adj_path)
             adj = torch.FloatTensor(adj)
+            adj = normalize_adj_1(torch.FloatTensor(adj))
 
             # 初始化变量
             best_node_feature = None
             best_loss = float('inf')
 
             model = GAE(adj.shape[0], 48)
-            optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+            optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
             t_total = time.time()
             loss_values = []
             bad_counter = 0
-            best = 1000 + 1
             best_epoch = 0
 
             for epoch in range(500):
@@ -93,14 +98,21 @@ if __name__ == '__main__':
                     best_epoch = epoch
                     # 获取当前最优嵌入
                     model.eval()
-                    best_node_feature, _ = model(torch.tensor(np.identity(adj.shape[0])).float(), adj)
+                    with torch.no_grad():
+                        best_node_feature, _ = model(torch.tensor(np.identity(adj.shape[0])).float(), adj)
 
                     os.makedirs(os.path.dirname(embedding_path), exist_ok=True)
                     # 保存最优嵌入
                     np.save(embedding_path, best_node_feature.detach().numpy())
                     print(f"Best Loss: {best_loss}\nEpoch: {best_epoch}")
+                                # 早停机制
+                if epoch > 0 and loss_values[-1] >= loss_values[-2]:
+                    bad_counter += 1
+                else:
+                    bad_counter = 0  # 只要损失下降，就重置计数器
 
-                if bad_counter == 100:
+                if bad_counter >= 50:
+                    print(f"Early stopping at epoch {epoch+1} due to no improvement.")
                     break
 
             print("Optimization Finished!")

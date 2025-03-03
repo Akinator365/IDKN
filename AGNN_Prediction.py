@@ -53,6 +53,29 @@ def listMLE(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VAL
 
     preds_sorted_by_true_minus_max = preds_sorted_by_true - max_pred_values
 
+
+    # 增加数值稳定性的检查
+
+    if torch.isnan(y_pred).any() or torch.isinf(y_pred).any():
+
+        print("预测值中存在NaN或Inf")
+
+    # 增加eps值以提高数值稳定性
+
+    DEFAULT_EPS = 1e-10  # 改为更小的值
+
+    # 在计算exp之前进行clip操作
+
+    preds_sorted_by_true_minus_max = torch.clamp(
+
+        preds_sorted_by_true_minus_max, 
+
+        min=-100,  # 防止exp操作溢出
+
+        max=100
+
+    )
+
     cumsums = torch.cumsum(preds_sorted_by_true_minus_max.exp().flip(dims=[1]), dim=1).flip(dims=[1])
 
     observation_loss = torch.log(cumsums + eps) - preds_sorted_by_true_minus_max
@@ -86,6 +109,22 @@ def load_model(checkpoint_path, model_class, device):
     checkpoint = torch.load(checkpoint_path, map_location=device)  # 加载检查点
     model.load_state_dict(checkpoint['model_state_dict'])  # 加载模型参数
     return model
+
+def preprocess_features(embeddings):
+    """对嵌入向量进行预处理"""
+    # 标准化
+    mean = np.mean(embeddings, axis=0)
+    std = np.std(embeddings, axis=0)
+    normalized_embeddings = (embeddings - mean) / (std + 1e-8)
+    
+    # 确保没有极端值
+    normalized_embeddings = np.clip(
+        normalized_embeddings, 
+        -5,  # 下限
+        5    # 上限
+    )
+    
+    return normalized_embeddings
 
 if __name__ == '__main__':
 
@@ -179,6 +218,10 @@ if __name__ == '__main__':
 
             optimizer.zero_grad()  # Clear gradients
             loss.backward()  # Backward pass
+            
+            # 添加梯度裁剪
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
             optimizer.step()  # Update parameters
 
             total_loss += loss.item()

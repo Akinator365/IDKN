@@ -7,7 +7,7 @@ from scipy.stats import kendalltau
 
 from AGNN_Prediction import load_model
 from Model import CGNN
-from Utils import pickle_read
+from Utils import pickle_read, check_embeddings
 
 if __name__ == '__main__':
 
@@ -17,8 +17,8 @@ if __name__ == '__main__':
 
     # 加载模型检查点
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    best = 3
-    checkpoint_path = f"./training/IDKN/2025-01-17_17-17-09/checkpoint_{best}_epoch.pkl"
+    best = 260
+    checkpoint_path = f"./training/IDKN/2025-03-03_21-29-47/checkpoint_{best}_epoch.pkl"
 
     model = load_model(checkpoint_path, CGNN, device)
 
@@ -45,6 +45,8 @@ if __name__ == '__main__':
             adj_BA = torch.FloatTensor(adj_BA)
 
             node_feature = np.load(embedding_path)
+            check_embeddings(node_feature)
+            
             # 转换为 PyTorch 张量
             node_feature = torch.FloatTensor(node_feature)
             label = np.load(label_path)

@@ -4,6 +4,7 @@ import logging
 
 import numpy as np
 import scipy as sp
+import torch
 
 
 def pickle_read(path):
@@ -120,3 +121,18 @@ def normalize_adj(mx):
     r_inv_sqrt[np.isinf(r_inv_sqrt)] = 0.
     r_mat_inv_sqrt = sp.diags(r_inv_sqrt)
     return mx.dot(r_mat_inv_sqrt).transpose().dot(r_mat_inv_sqrt)
+
+def normalize_adj_1(adj):
+    adj = adj + torch.eye(adj.shape[0])  # 添加自环
+    deg = adj.sum(dim=1)  # 计算度矩阵
+    deg_inv_sqrt = torch.diag(torch.pow(deg, -0.5))  # 计算 D^(-1/2)
+    return deg_inv_sqrt @ adj @ deg_inv_sqrt  # 归一化
+
+def check_embeddings(embeddings):
+    """检查嵌入向量的数值问题"""
+    print(f"嵌入向量的统计信息：")
+    print(f"最大值：{np.max(embeddings)}")
+    print(f"最小值：{np.min(embeddings)}")
+    print(f"平均值：{np.mean(embeddings)}")
+    print(f"是否包含NaN：{np.isnan(embeddings).any()}")
+    print(f"是否包含Inf：{np.isinf(embeddings).any()}")

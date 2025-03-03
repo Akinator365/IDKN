@@ -220,7 +220,8 @@ class GNN(torch.nn.Module):
 
     def forward(self, x, adj):
         # adj=torch.Tensor(adj.numpy()+np.identity(adj.shape[0]))
-        adj = torch.FloatTensor(normalize_adj(sp.csr_matrix(adj) + sp.eye(adj.shape[0])).todense())
+        # 因为已经归一化，所以不需要再加单位矩阵
+        # adj = torch.FloatTensor(normalize_adj(sp.csr_matrix(adj) + sp.eye(adj.shape[0])).todense())
         x = torch.mm(adj, x)
         x = torch.mm(x, self.w)
         # x=x.add(self.a)
@@ -246,6 +247,7 @@ class GAE(nn.Module):  # 编码器
         x = self.conv1(x, adj)
         # x = self.conv2(x, adj)
         x = self.conv3(x, adj)  # 经过三层GCN后得到节点的表示
+        # TODO: 线性层是否需要激活函数
         A = self.fc1(x)  # 直接算点积
         A = self.fc2(A)
         # A = torch.sigmoid(A)
@@ -283,30 +285,6 @@ class CNNnet(torch.nn.Module):
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.fc(x.view(x.size(0), -1))
-        return x
-
-
-class GNN(torch.nn.Module):
-    def __init__(self, input_feature, output_feature):
-        super(GNN, self).__init__()
-        self.w = nn.Parameter(torch.empty(size=(input_feature, output_feature)))
-        self.a = nn.Parameter(torch.empty(size=(1, output_feature)))
-        self.sigmod = torch.nn.Sigmoid()
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        # nn.init.xavier_uniform_(self.w.data,gain=1.414)
-        # nn.init.xavier_uniform_(self.a.data,gain=1.414)
-        for param in self.parameters():
-            nn.init.xavier_uniform_(param)
-
-    def forward(self, x, adj):
-        adj = torch.Tensor(adj.numpy() + np.identity(adj.shape[0]))
-        # adj=torch.FloatTensor(normalize_adj(sp.csr_matrix(adj)+ sp.eye(adj.shape[0])).todense())
-        x = torch.mm(adj, x)
-        x = torch.mm(x, self.w)
-        x = x.add(self.a)
-        x = torch.relu(x)
         return x
 
 
