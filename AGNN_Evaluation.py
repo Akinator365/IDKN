@@ -45,7 +45,7 @@ if __name__ == '__main__':
             adj_BA = torch.FloatTensor(adj_BA)
 
             node_feature = np.load(embedding_path)
-            check_embeddings(node_feature)
+            # check_embeddings(node_feature)
             
             # 转换为 PyTorch 张量
             node_feature = torch.FloatTensor(node_feature)

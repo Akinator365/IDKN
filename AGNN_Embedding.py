@@ -18,19 +18,19 @@ def train(epoch, adj):
 
     x, A = model(torch.tensor(np.identity(adj.shape[0])).float(), adj)
 
-    #loss_train = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro')
-    loss_train = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True))
+    #loss_train = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True))
+    loss_train = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro')
 
     optimizer.zero_grad()
     loss_train.backward()
     optimizer.step()
 
-    # loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro')
     # 计算验证损失 (避免梯度计算)
     model.eval()
     with torch.no_grad():
         x, A = model(torch.tensor(np.identity(adj.shape[0])).float(), adj)
-        loss_val = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True))
+        # loss_val = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True))
+        loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro')
 
     print('Epoch: {:04d}'.format(epoch + 1),
           'loss_train: {}'.format(loss_train.data.item()),
