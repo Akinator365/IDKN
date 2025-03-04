@@ -13,7 +13,7 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import dense_to_sparse, to_dense_adj
 
-from Model import CGNN
+from Model import CGNN, CGNN_New
 from Utils import pickle_read, get_logger
 
 # DEFAULT_EPS = 1e-10
@@ -180,7 +180,7 @@ if __name__ == '__main__':
             y = torch.tensor(labels, dtype=torch.float)  # 标签
 
             # 创建 PyTorch Geometric 的 Data 对象
-            data = Data(x=x, edge_index=edge_index, num_nodes=num_nodes, adj=adj, y=y)
+            data = Data(x=x, edge_index=edge_index, y=y)
 
             #data = Data(x=x, edge_index=edge_index, num_nodes=num_nodes, adj=adj, y=y)
 
@@ -192,7 +192,7 @@ if __name__ == '__main__':
     np.random.shuffle(data_list)
     # train_dataset = data_list[:round(len(data_list) * 0.8)]
     # test_dataset = data_list[round(len(data_list) * 0.8):]
-    train_loader = DataLoader(data_list, batch_size=1, shuffle=True)
+    train_loader = DataLoader(data_list, batch_size=4, shuffle=True, follow_batch=['x'])
     # test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     random.seed(17)
@@ -201,7 +201,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     IDKN_logger.info(f"using device:{device}")
 
-    model = CGNN().to(device)
+    model = CGNN_New().to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
 
     t_total = time.time()
@@ -217,9 +217,9 @@ if __name__ == '__main__':
         for data in train_loader:  # Batch training with DataLoader
             data = data.to(device)  # Move batch to GPU/CPU
             # 转回稠密邻接矩阵
-            adj_matrix_reconstructed = to_dense_adj(data.edge_index, max_num_nodes=data.num_nodes).squeeze(0)
+            # adj_matrix_reconstructed = to_dense_adj(data.edge_index, max_num_nodes=data.num_nodes).squeeze(0)
 
-            out = model(data.x, adj_matrix_reconstructed)  # Forward pass
+            out = model(data.x, data.edge_index)  # Forward pass
             loss = listMLE(out, data.y) # Compute loss
             #loss = torch.nn.functional.mse_loss(out, data.y)
             loss_val = torch.nn.functional.mse_loss(out, data.y)

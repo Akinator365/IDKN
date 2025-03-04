@@ -1,6 +1,6 @@
 import numpy as np
 import scipy as sp
-from torch_geometric.nn import GATConv, GCNConv
+from torch_geometric.nn import GATConv, GCNConv, global_mean_pool
 from torch_geometric.utils import add_self_loops, degree
 from torch_geometric.datasets import Planetoid
 import torch
@@ -306,6 +306,34 @@ class CGNN(torch.nn.Module):
         x = torch.relu(x)
         x = x.flatten()
 
+        return x
+
+
+class CGNN_New(torch.nn.Module):
+    def __init__(self):
+        super(CGNN_New, self).__init__()
+        # CNN层
+        self.layer2 = GCNConv(48, 16)  # 使用GCNConv替代原始GNN层
+        self.layer3 = GCNConv(16, 8)  # 输入/输出特征维度需匹配
+        self.fc = torch.nn.Linear(8, 1)
+
+        # 更精细的初始化
+        nn.init.kaiming_normal_(self.fc.weight, mode='fan_out')
+
+    def forward(self, x, edge_index):
+        # 1. 使用edge_index进行图卷积
+        x = self.layer2(x, edge_index)
+        x = torch.relu(x)
+        x = self.layer3(x, edge_index)
+        x = torch.relu(x)
+
+        # 全局池化（适应不同图大小）
+        # x = torch.mean(x, dim=0)  # 或其他池化方式
+        # x = global_mean_pool(x, batch)
+
+        # 2. 修改全连接层处理方式
+        x = self.fc(x)  # [num_nodes, 1]
+        x = x.squeeze(-1)  # [num_nodes]
         return x
 
 class ListMLE(nn.Module):

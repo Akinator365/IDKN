@@ -24,7 +24,6 @@ def train(epoch, adj):
     adj = adj.to(device)  # 确保 adj 在 GPU
 
     x, A = model(x, adj)
-    #x, A = model(torch.tensor(np.identity(adj.shape[0])).float(), adj)
 
     # loss_train = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
     loss_train = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
@@ -37,7 +36,7 @@ def train(epoch, adj):
     model.eval()
     with torch.no_grad():
         x, A = model(torch.tensor(np.identity(adj.shape[0])).float().to(device), adj)
-        #loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
+        # loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
         loss_val = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
 
     print('Epoch: {:04d}'.format(epoch + 1),
@@ -62,7 +61,7 @@ if __name__ == '__main__':
     torch.manual_seed(17)
 
     # 从文件中读取参数
-    with open("Network_Parameters.json", "r") as f:
+    with open("Network_Parameters_small.json", "r") as f:
         network_params = json.load(f)
 
     for network in network_params:

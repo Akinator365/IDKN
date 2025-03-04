@@ -4,9 +4,10 @@ import os
 import numpy as np
 import torch
 from scipy.stats import kendalltau
+from torch_geometric.utils import dense_to_sparse
 
-from AGNN_Prediction import load_model
-from Model import CGNN
+from AGNN_Train import load_model
+from Model import CGNN, CGNN_New
 from Utils import pickle_read, check_embeddings
 
 if __name__ == '__main__':
@@ -20,10 +21,10 @@ if __name__ == '__main__':
 
     # 加载模型检查点
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    best = 259
-    checkpoint_path = f"./training/IDKN/2025-03-04_15-32-47/checkpoint_{best}_epoch.pkl"
+    best = 273
+    checkpoint_path = f"./training/IDKN/2025-03-04_22-10-59/checkpoint_{best}_epoch.pkl"
 
-    model = load_model(checkpoint_path, CGNN, device)
+    model = load_model(checkpoint_path, CGNN_New, device)
     model.eval()
 
     # 从文件中读取参数
@@ -51,8 +52,13 @@ if __name__ == '__main__':
             embedding_path = os.path.join(TRAIN_EMBEDDING_PATH, network_type + '_graph', network,
                                           f'{network_name}_embedding.npy')
 
-            adj_BA = pickle_read(adj_path)
-            adj_BA = torch.FloatTensor(adj_BA).to(device)
+            # adj_BA = pickle_read(adj_path)
+            # adj_BA = torch.FloatTensor(adj_BA).to(device)
+
+            adj_matrix = pickle_read(adj_path)
+
+            # adj_matrix 是一个邻接矩阵，我们需要将其转为边索引格式
+            edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0].to(device)  # 转为 edge_index 格式
 
             node_feature = np.load(embedding_path)
             # check_embeddings(node_feature)
@@ -62,10 +68,12 @@ if __name__ == '__main__':
             label = np.load(label_path)
             label_t = torch.tensor(label).float().to(device)
 
-            output = model(node_feature, adj_BA)
+            output = model(node_feature, edge_index)
 
             # 计算 Kendall tau 相关性
             stat, pval = kendalltau(output.detach().cpu().numpy(), label_t.cpu().numpy())
+
+            print(f"{network}_{id} tau:{stat}")
 
             # 由于p-value很小，对其取对数
             log_pval = np.log10(pval) if pval > 0 else -100  # 避免 log(0)
