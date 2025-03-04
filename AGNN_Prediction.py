@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import random
+import sys
 import time
 
 import numpy as np
@@ -13,7 +14,7 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.utils import dense_to_sparse, to_dense_adj
 
 from Model import CGNN
-from Utils import pickle_read
+from Utils import pickle_read, get_logger
 
 # DEFAULT_EPS = 1e-10
 DEFAULT_EPS = 0.0001
@@ -58,7 +59,7 @@ def listMLE(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VAL
 
     if torch.isnan(y_pred).any() or torch.isinf(y_pred).any():
 
-        print("预测值中存在NaN或Inf")
+        IDKN_logger.info("预测值中存在NaN或Inf")
 
     # 增加eps值以提高数值稳定性
 
@@ -139,16 +140,22 @@ if __name__ == '__main__':
     CHECKPOINTS_PATH = os.path.join(os.getcwd(), 'training', 'IDKN', date)
     os.makedirs(CHECKPOINTS_PATH, exist_ok=True)
 
+    # 初始化日志记录器
+    LOGGING_PATH = os.path.join(CHECKPOINTS_PATH, 'train.log')
+    # 传入 logger
+    IDKN_logger = get_logger(LOGGING_PATH)
+    sys.stdout = IDKN_logger  # 让 print() 也写入日志
+
     # 从文件中读取参数
     with open("Network_Parameters_small.json", "r") as f:
         network_params = json.load(f)
 
     data_list = []  # 用于存储多个图的数据
-    print("Processing graphs...")
+    IDKN_logger.info("Processing graphs...")
     for network in network_params:
         network_type = network_params[network]['type']
         num_graph = network_params[network]['num']
-        print(f'Processing {network} graphs...')
+        IDKN_logger.info(f'Processing {network} graphs...')
         for id in range(num_graph):
             network_name = f"{network}_{id}"
             single_adj_path = os.path.join(adj_path, network_type + '_graph', network, network_name + '_adj.npy')
@@ -192,6 +199,7 @@ if __name__ == '__main__':
     np.random.seed(17)
     torch.manual_seed(17)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    IDKN_logger.info(f"using device:{device}")
 
     model = CGNN().to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
@@ -231,12 +239,9 @@ if __name__ == '__main__':
         avg_loss = total_loss / len(train_loader)
         avg_loss_val = total_loss_val / len(train_loader)
 
-        print('Epoch: {:04d}'.format(epoch + 1),
-              'loss_train: {}'.format(avg_loss),
-
-              'loss_val: {}'.format(avg_loss_val),
-
-              'time: {}s'.format(time.time() - t_total))
+        IDKN_logger.info('Epoch: {:04d}, loss_train: {:.6f}, loss_val: {:.6f}, time: {:.2f}s'.format(
+            epoch + 1, avg_loss, avg_loss_val, time.time() - t_total
+        ))
 
         if avg_loss < best:
             best = avg_loss
@@ -247,9 +252,9 @@ if __name__ == '__main__':
             bad_counter += 1
 
         if bad_counter == 50:
-            print("Early stopping triggered.")
+            IDKN_logger.info("Early stopping triggered.")
             break
-    print("Optimization Finished!")
-    print("Total time elapsed: {}s".format(time.time() - t_total))
-    print("Best Epoch: {:04d} with loss: {:.4f}".format(best_epoch, best))
-    print("Best model saved in: ", CHECKPOINTS_PATH)
+    IDKN_logger.info("Optimization Finished!")
+    IDKN_logger.info("Total time elapsed: {:.2f}s".format(time.time() - t_total))
+    IDKN_logger.info("Best Epoch: {:04d} with loss: {:.4f}".format(best_epoch, best))
+    IDKN_logger.info("Best model saved in: {}".format(CHECKPOINTS_PATH))

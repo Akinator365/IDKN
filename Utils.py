@@ -1,6 +1,7 @@
 import os
 import pickle
 import logging
+import sys
 
 import numpy as np
 import scipy as sp
@@ -16,11 +17,11 @@ def pickle_save(path, data):
     with open(path, 'wb') as file:
         pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
 
+
 def get_logger(filename, verbosity=1, name=None):
     level_dict = {0: logging.DEBUG, 1: logging.INFO, 2: logging.WARNING}
-    formatter = logging.Formatter(
-        "[%(asctime)s][%(levelname)s] %(message)s"
-    )
+    formatter = logging.Formatter("[%(asctime)s][%(levelname)s] %(message)s")
+
     logger = logging.getLogger(name)
     logger.setLevel(level_dict[verbosity])
 
@@ -28,11 +29,12 @@ def get_logger(filename, verbosity=1, name=None):
     fh.setFormatter(formatter)
     logger.addHandler(fh)
 
-    sh = logging.StreamHandler()
+    sh = logging.StreamHandler(sys.stdout)  # 终端输出
     sh.setFormatter(formatter)
     logger.addHandler(sh)
 
     return logger
+
 
 def min_max_normalization(x):
     min_val = x.min(axis=0, keepdims=True)  # 计算每个特征的最小值

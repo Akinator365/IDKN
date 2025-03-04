@@ -12,14 +12,22 @@ from Model import GAE
 from Utils import pickle_read, normalize_adj_1
 
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
+
 def train(epoch, adj):
     t = time.time()
     model.train()
 
-    x, A = model(torch.tensor(np.identity(adj.shape[0])).float(), adj)
+    x = torch.tensor(np.identity(adj.shape[0]), dtype=torch.float).to(device)
+    adj = adj.to(device)  # 确保 adj 在 GPU
 
-    #loss_train = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True))
-    loss_train = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro')
+    x, A = model(x, adj)
+    #x, A = model(torch.tensor(np.identity(adj.shape[0])).float(), adj)
+
+    # loss_train = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
+    loss_train = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
 
     optimizer.zero_grad()
     loss_train.backward()
@@ -28,9 +36,9 @@ def train(epoch, adj):
     # 计算验证损失 (避免梯度计算)
     model.eval()
     with torch.no_grad():
-        x, A = model(torch.tensor(np.identity(adj.shape[0])).float(), adj)
-        # loss_val = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True))
-        loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro')
+        x, A = model(torch.tensor(np.identity(adj.shape[0])).float().to(device), adj)
+        #loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
+        loss_val = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
 
     print('Epoch: {:04d}'.format(epoch + 1),
           'loss_train: {}'.format(loss_train.data.item()),
@@ -54,7 +62,7 @@ if __name__ == '__main__':
     torch.manual_seed(17)
 
     # 从文件中读取参数
-    with open("Network_Parameters_small.json", "r") as f:
+    with open("Network_Parameters.json", "r") as f:
         network_params = json.load(f)
 
     for network in network_params:
@@ -75,13 +83,13 @@ if __name__ == '__main__':
             adj_path = os.path.join(TRAIN_ADJ_PATH, network_type + '_graph', network, network_name + '_adj.npy')
             adj = pickle_read(adj_path)
             adj = torch.FloatTensor(adj)
-            adj = normalize_adj_1(torch.FloatTensor(adj))
+            adj = normalize_adj_1(torch.FloatTensor(adj)).to(device)
 
             # 初始化变量
             best_node_feature = None
             best_loss = float('inf')
 
-            model = GAE(adj.shape[0], 48)
+            model = GAE(adj.shape[0], 48).to(device)
             optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
             t_total = time.time()
@@ -99,11 +107,13 @@ if __name__ == '__main__':
                     # 获取当前最优嵌入
                     model.eval()
                     with torch.no_grad():
-                        best_node_feature, _ = model(torch.tensor(np.identity(adj.shape[0])).float(), adj)
+                        best_node_feature, _ = model(torch.tensor(np.identity(adj.shape[0])).float().to(device), adj)
 
                     os.makedirs(os.path.dirname(embedding_path), exist_ok=True)
                     # 保存最优嵌入
-                    np.save(embedding_path, best_node_feature.detach().numpy())
+                    # np.save(embedding_path, best_node_feature.detach().numpy())
+                    np.save(embedding_path, best_node_feature.detach().cpu().numpy())
+
                     print(f"Best Loss: {best_loss}\nEpoch: {best_epoch}")
                                 # 早停机制
                 if epoch > 0 and loss_values[-1] >= loss_values[-2]:
