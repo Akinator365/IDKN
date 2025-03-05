@@ -60,12 +60,22 @@ def GenerateTrainData(train_dataset_path, id, network, network_para, scope):
 
 if __name__ == '__main__':
     TRAIN_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'train')
+    TEST_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'test')
+
     # 从文件中读取参数
     with open("Network_Parameters.json", "r") as f:
-        network_params = json.load(f)
+        train_network_params = json.load(f)
+    # 从文件中读取参数
+    with open("Network_Parameters_test.json", "r") as f:
+        test_network_params = json.load(f)
     # 图的节点数量浮动范围
     scope = 100
-    for network in network_params:
-        num_graph = network_params[network]['num']
+    for network in train_network_params:
+        num_graph = train_network_params[network]['num']
         for id in range(num_graph):
-            GenerateTrainData(TRAIN_DATASET_PATH, id, network, network_params[network], scope)
+            GenerateTrainData(TRAIN_DATASET_PATH, id, network, train_network_params[network], scope)
+
+    for network in test_network_params:
+        num_graph = test_network_params[network]['num']
+        for id in range(num_graph):
+            GenerateTrainData(TEST_DATASET_PATH, id, network, test_network_params[network], scope)

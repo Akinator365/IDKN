@@ -13,22 +13,25 @@ from Utils import pickle_read, check_embeddings
 if __name__ == '__main__':
 
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
+    TEST_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'test')
     TRAIN_EMBEDDING_PATH = os.path.join(os.getcwd(), 'data', 'embedding', 'train')
+    TEST_EMBEDDING_PATH = os.path.join(os.getcwd(), 'data', 'embedding', 'test')
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
+    TEST_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'test')
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
     # 加载模型检查点
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    best = 273
-    checkpoint_path = f"./training/IDKN/2025-03-04_22-10-59/checkpoint_{best}_epoch.pkl"
+    best = 572
+    checkpoint_path = f"./training/IDKN/2025-03-05_15-47-31/checkpoint_{best}_epoch.pkl"
 
     model = load_model(checkpoint_path, CGNN_New, device)
     model.eval()
 
     # 从文件中读取参数
-    with open("Network_Parameters_small.json", "r") as f:
+    with open("Network_Parameters_test.json", "r") as f:
         network_params = json.load(f)
 
     # 存储每类图的 Kendall tau 统计量和 p-value
@@ -46,10 +49,10 @@ if __name__ == '__main__':
 
         for id in range(num_graph):
             network_name = f"{network}_{id}"
-            adj_path = os.path.join(TRAIN_ADJ_PATH, network_type + '_graph', network, f'{network_name}_adj.npy')
-            label_path = os.path.join(TRAIN_LABELS_PATH, network_type + '_graph', network,
+            adj_path = os.path.join(TEST_ADJ_PATH, network_type + '_graph', network, f'{network_name}_adj.npy')
+            label_path = os.path.join(TEST_LABELS_PATH, network_type + '_graph', network,
                                       f'{network_name}_labels.npy')
-            embedding_path = os.path.join(TRAIN_EMBEDDING_PATH, network_type + '_graph', network,
+            embedding_path = os.path.join(TEST_EMBEDDING_PATH, network_type + '_graph', network,
                                           f'{network_name}_embedding.npy')
 
             # adj_BA = pickle_read(adj_path)

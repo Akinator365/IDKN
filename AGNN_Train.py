@@ -147,7 +147,7 @@ if __name__ == '__main__':
     sys.stdout = IDKN_logger  # 让 print() 也写入日志
 
     # 从文件中读取参数
-    with open("Network_Parameters_small.json", "r") as f:
+    with open("Network_Parameters_middle.json", "r") as f:
         network_params = json.load(f)
 
     data_list = []  # 用于存储多个图的数据
@@ -192,7 +192,7 @@ if __name__ == '__main__':
     np.random.shuffle(data_list)
     # train_dataset = data_list[:round(len(data_list) * 0.8)]
     # test_dataset = data_list[round(len(data_list) * 0.8):]
-    train_loader = DataLoader(data_list, batch_size=4, shuffle=True, follow_batch=['x'])
+    train_loader = DataLoader(data_list, batch_size=8, shuffle=True, follow_batch=['x'])
     # test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     random.seed(17)

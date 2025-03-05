@@ -323,7 +323,7 @@ def new_SIR_Multiple(graph_path, labels_path, network_params):
     influence = {}
 
     # 使用 multiprocessing.Pool 并行计算每个节点的影响力
-    with Pool(processes=30) as pool:
+    with Pool(processes=60) as pool:
         # 提交任务给进程池
         results = pool.starmap(
             simulate_node,
@@ -356,18 +356,53 @@ def Conver_to_Array(labels_path):
     np.save(labels_path + '.npy', labels)
 
 
+def GenerateTrainLabel(DATASET_PATH, LABELS_PATH, network_params):
+    for network in network_params:
+        network_type = network_params[network]['type']
+        num_graph = network_params[network]['num']
+        print(f'Processing {network} graphs...')
+        for id in range(num_graph):
+            # network_name = 'DNCEmails'
+            network_name = f"{network}_{id}"
+            graph_path = os.path.join(DATASET_PATH, network_type + '_graph', network, network_name + '.txt')
+            labels_path = os.path.join(LABELS_PATH, network_type + '_graph', network, network_name + "_labels")
+            network_para = network_params[network]
+            os.makedirs(os.path.dirname(labels_path), exist_ok=True)
+            txt_filepath = labels_path + ".txt"
+            # 如果文件已经存在，则跳过
+            if os.path.exists(txt_filepath):
+                print(f"File {txt_filepath} already exists, skipping...")
+                continue
+            else:
+                print(f"Processing {network_name}")
+
+            G = nx.read_edgelist(graph_path)
+            start_time = start_timer()  # 记录开始时间
+            # SIR_Single(G, labels_path)
+            # SIR_Multiple(G, labels_path)
+            new_SIR_Multiple(graph_path, labels_path, network_para)
+            elapsed_time = stop_timer(start_time)  # 计算函数运行时间
+            print(f"Total time taken: {elapsed_time:.2f} seconds")
+            Conver_to_Array(labels_path)
+
+
 if __name__ == '__main__':
     TRAIN_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'train')
+    TEST_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'test')
     REALWORLD_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld')
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
+    TEST_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'test')
     REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
 
     # 从文件中读取参数
     with open("Network_Parameters.json", "r") as f:
-        network_params = json.load(f)
-    # 图的节点数量
-    num_nodes = 1000
-    # 图的节点数量浮动范围
+        train_network_params = json.load(f)
+    with open("Network_Parameters_test.json", "r") as f:
+        test_network_params = json.load(f)
+
+    GenerateTrainLabel(TRAIN_DATASET_PATH, TRAIN_LABELS_PATH, train_network_params)
+    GenerateTrainLabel(TEST_DATASET_PATH, TEST_LABELS_PATH, test_network_params)
+
 
     #network_name = 'DNCEmails'
     ##network_name = 'karate_club_graph'
@@ -405,31 +440,3 @@ if __name__ == '__main__':
     ## 输出肯德尔系数和p值
     #print(f"肯德尔系数: {tau}")
     #print(f"p值: {p_value}")
-
-    for network in network_params:
-        network_type = network_params[network]['type']
-        num_graph = network_params[network]['num']
-        print(f'Processing {network} graphs...')
-        for id in range(num_graph):
-            #network_name = 'DNCEmails'
-            network_name = f"{network}_{id}"
-            graph_path = os.path.join(TRAIN_DATASET_PATH, network_type + '_graph', network, network_name + '.txt')
-            labels_path = os.path.join(TRAIN_LABELS_PATH, network_type + '_graph', network, network_name + "_labels")
-            network_para = network_params[network]
-            os.makedirs(os.path.dirname(labels_path), exist_ok=True)
-            txt_filepath = labels_path + ".txt"
-            # 如果文件已经存在，则跳过
-            if os.path.exists(txt_filepath):
-                print(f"File {txt_filepath} already exists, skipping...")
-                continue
-            else:
-                print(f"Processing {network_name}")
-
-            G = nx.read_edgelist(graph_path)
-            start_time = start_timer()  # 记录开始时间
-            #SIR_Single(G, labels_path)
-            #SIR_Multiple(G, labels_path)
-            new_SIR_Multiple(graph_path, labels_path, network_para)
-            elapsed_time = stop_timer(start_time)  # 计算函数运行时间
-            print(f"Total time taken: {elapsed_time:.2f} seconds")
-            Conver_to_Array(labels_path)
