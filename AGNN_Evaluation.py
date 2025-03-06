@@ -3,6 +3,7 @@ import os
 
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
 from scipy.stats import kendalltau
 from torch_geometric.utils import dense_to_sparse
 
@@ -10,6 +11,44 @@ from AGNN_Train import load_model
 from Model import CGNN, CGNN_New
 from Utils import pickle_read, check_embeddings
 
+
+def plot_results(results, graph_type='BA'):
+    """统一绘图函数"""
+    plt.figure(figsize=(10, 6))
+
+    if graph_type == 'BA':
+        # BA图参数化显示
+        sizes = ["500", "1000", "2000", "5000"]
+        params = [3, 5, 8, 15]
+
+        for size in sizes:
+            x, y = [], []
+            for m in params:
+                key = f"BA_{size}_{m}"
+                if key in results and results[key]["statistics"]:
+                    y.append(np.nanmean(results[key]["statistics"]))
+                    x.append(m)
+            if y:
+                plt.plot(x, y, marker='o', label=f"Size {size}")
+
+        plt.xlabel("BA Parameter (m)")
+        plt.xticks(params)
+
+    elif graph_type == 'realworld':
+        # Realworld数据集显示
+        networks = list(results.keys())
+        values = [np.nanmean(results[n]["statistics"]) for n in networks]
+
+        plt.bar(networks, values)
+        plt.xlabel("Dataset")
+        plt.xticks(rotation=45)
+
+    plt.ylabel("Average Kendall Tau")
+    plt.title(f"Performance on {graph_type} Graphs")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 if __name__ == '__main__':
 
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
@@ -92,4 +131,39 @@ if __name__ == '__main__':
         print(f"\nNetwork Type: {network}")
         print(f"Average Kendall tau statistic: {avg_stat:.4f}")
         print(f"Average p-value: {avg_pval:.4f}")
+
+    # 定义图的大小和参数
+    graph_sizes = ["BA_500", "BA_1000", "BA_2000", "BA_5000"]
+    graph_params = [3, 5, 8, 15]  # BA 生成参数 m
+
+    # 初始化存储每种大小图的 tau 平均值
+    tau_values = {size: {m: np.nan for m in graph_params} for size in graph_sizes}
+
+    # 遍历 results，提取数据
+    # 直接用完整的 `network_name` 去匹配 `results`
+    for size in graph_sizes:
+        for m in graph_params:
+            network_name = f"{size}_{m}"  # 组合完整的名称
+            if network_name in results:  # 直接匹配 `results` 里的 key
+                if results[network_name]["statistics"]:  # 确保 statistics 不是空
+                    tau_values[size][m] = np.mean(results[network_name]["statistics"])
+
+    # 绘制折线图
+    plt.figure(figsize=(8, 6))
+
+    for size in graph_sizes:
+        # 提取非 NaN 数据
+        x_vals = [m for m in graph_params if not np.isnan(tau_values[size][m])]
+        y_vals = [tau_values[size][m] for m in graph_params if not np.isnan(tau_values[size][m])]
+
+        if y_vals:  # 只有在数据存在时才绘制
+            plt.plot(x_vals, y_vals, marker='o', label=size)
+
+    plt.xlabel("BA Graph Parameter (m)")
+    plt.ylabel("Average Kendall Tau Statistic")
+    plt.title("Kendall Tau Statistic for Different BA Graphs")
+    plt.xticks(graph_params)  # 设置横坐标刻度
+    plt.legend(title="Graph Size")
+    plt.grid(True)
+    plt.show()
 

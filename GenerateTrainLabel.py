@@ -357,33 +357,46 @@ def Conver_to_Array(labels_path):
 
 
 def GenerateTrainLabel(DATASET_PATH, LABELS_PATH, network_params):
-    for network in network_params:
-        network_type = network_params[network]['type']
-        num_graph = network_params[network]['num']
-        print(f'Processing {network} graphs...')
-        for id in range(num_graph):
-            # network_name = 'DNCEmails'
-            network_name = f"{network}_{id}"
-            graph_path = os.path.join(DATASET_PATH, network_type + '_graph', network, network_name + '.txt')
-            labels_path = os.path.join(LABELS_PATH, network_type + '_graph', network, network_name + "_labels")
-            network_para = network_params[network]
-            os.makedirs(os.path.dirname(labels_path), exist_ok=True)
-            txt_filepath = labels_path + ".txt"
-            # 如果文件已经存在，则跳过
-            if os.path.exists(txt_filepath):
-                print(f"File {txt_filepath} already exists, skipping...")
-                continue
-            else:
-                print(f"Processing {network_name}")
+    def GetLabel(graph_path, labels_path, name, params):
+        txt_filepath = labels_path + ".txt"
+        if os.path.exists(txt_filepath):
+            print(f"File {txt_filepath} already exists, skipping...")
+            return
 
-            G = nx.read_edgelist(graph_path)
-            start_time = start_timer()  # 记录开始时间
-            # SIR_Single(G, labels_path)
-            # SIR_Multiple(G, labels_path)
-            new_SIR_Multiple(graph_path, labels_path, network_para)
-            elapsed_time = stop_timer(start_time)  # 计算函数运行时间
-            print(f"Total time taken: {elapsed_time:.2f} seconds")
-            Conver_to_Array(labels_path)
+        print(f"Processing {name}")
+        G = nx.read_edgelist(graph_path)
+        start_time = start_timer()
+        # SIR_Single(G, labels_path)
+        # SIR_Multiple(G, labels_path)
+        new_SIR_Multiple(graph_path, labels_path, params)
+        elapsed_time = stop_timer(start_time)
+
+        Conver_to_Array(labels_path)
+        print(f"Total time taken: {elapsed_time:.2f} seconds")
+
+    for network in network_params:
+        params = network_params[network]
+        network_type = params['type']
+        print(f'Processing {network} graphs...')
+
+        entries = []
+        if network_type == 'realworld':
+            # Realworld 类型路径构造
+            graph_path = os.path.join(DATASET_PATH, f"{network}.txt")
+            labels_path = os.path.join(LABELS_PATH, f"{network}_labels")
+            entries.append((graph_path, labels_path, network))
+        else:
+            # 合成数据集路径构造
+            base_dir = f"{network_type}_graph"
+            for id in range(params['num']):
+                network_name = f"{network}_{id}"
+                graph_path = os.path.join(DATASET_PATH, base_dir, network, f"{network_name}.txt")
+                labels_path = os.path.join(LABELS_PATH, base_dir, network, f"{network_name}_labels")
+                entries.append((graph_path, labels_path, network_name))
+
+        for graph_path, labels_path, name in entries:
+            os.makedirs(os.path.dirname(labels_path), exist_ok=True)
+            GetLabel(graph_path, labels_path, name, params)
 
 
 if __name__ == '__main__':
@@ -399,9 +412,12 @@ if __name__ == '__main__':
         train_network_params = json.load(f)
     with open("Network_Parameters_test.json", "r") as f:
         test_network_params = json.load(f)
+    with open("Network_Parameters_realworld.json", "r") as f:
+        realworld_network_params = json.load(f)
 
     GenerateTrainLabel(TRAIN_DATASET_PATH, TRAIN_LABELS_PATH, train_network_params)
     GenerateTrainLabel(TEST_DATASET_PATH, TEST_LABELS_PATH, test_network_params)
+    GenerateTrainLabel(REALWORLD_DATASET_PATH, REALWORLD_LABELS_PATH, realworld_network_params)
 
 
     #network_name = 'DNCEmails'

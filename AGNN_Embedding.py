@@ -15,108 +15,111 @@ from Utils import pickle_read, normalize_adj_1
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-
-def train(epoch, adj):
-    t = time.time()
-    model.train()
-
-    x = torch.tensor(np.identity(adj.shape[0]), dtype=torch.float).to(device)
-    adj = adj.to(device)  # 确保 adj 在 GPU
-
-    x, A = model(x, adj)
-
-    # loss_train = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
-    loss_train = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
-
-    optimizer.zero_grad()
-    loss_train.backward()
-    optimizer.step()
-
-    # 计算验证损失 (避免梯度计算)
-    model.eval()
-    with torch.no_grad():
-        x, A = model(torch.tensor(np.identity(adj.shape[0])).float().to(device), adj)
-        # loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
-        loss_val = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
-
-    print('Epoch: {:04d}'.format(epoch + 1),
-          'loss_train: {}'.format(loss_train.data.item()),
-
-          'loss_val: {}'.format(loss_val.data.item()),
-
-          'time: {}s'.format(time.time() - t))
-    return loss_train.data.item()
-
-
 def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
-    global model, optimizer
-    for network in network_params:
-        network_type = network_params[network]['type']
-        num_graph = network_params[network]['num']
-        print(f'Processing {network} graphs...')
-        for id in range(num_graph):
-            network_name = f"{network}_{id}"
-            embedding_path = os.path.join(EMBEDDING_PATH, network_type + '_graph', network,
-                                          network_name + "_embedding.npy")
+    def GetEmbedding(name, adj_path, embedding_path):
+        # 定义训练函数在闭包内部以共享模型参数
+        def train(epoch, adj):
+            t = time.time()
+            model.train()
 
-            # 如果文件已经存在，则跳过
-            if os.path.exists(embedding_path):
-                print(f"File {embedding_path} already exists, skipping...")
-                continue
+            x = torch.tensor(np.identity(adj.shape[0]), dtype=torch.float).to(device)
+            adj = adj.to(device)  # 确保 adj 在 GPU
+
+            x, A = model(x, adj)
+
+            # loss_train = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
+            loss_train = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
+
+            optimizer.zero_grad()
+            loss_train.backward()
+            optimizer.step()
+
+            # 计算验证损失 (避免梯度计算)
+            model.eval()
+            with torch.no_grad():
+                x, A = model(torch.tensor(np.identity(adj.shape[0])).float().to(device), adj)
+                # loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
+                loss_val = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
+
+            print('Epoch: {:04d}'.format(epoch + 1),
+                  'loss_train: {}'.format(loss_train.data.item()),
+
+                  'loss_val: {}'.format(loss_val.data.item()),
+
+                  'time: {}s'.format(time.time() - t))
+            return loss_train.data.item()
+
+        if os.path.exists(embedding_path):
+            print(f"File {embedding_path} already exists, skipping...")
+            return
+
+        print(f"Processing {name}")
+        adj = pickle_read(adj_path)
+        adj = torch.FloatTensor(adj)
+        adj = normalize_adj_1(adj).to(device)
+
+        model = GAE(adj.shape[0], 48).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+
+        t_total = time.time()
+        best_loss = float('inf')
+        best_feature = None  # 存储最佳嵌入的变量
+        bad_counter = 0
+
+        for epoch in range(500):
+            loss = train(epoch, adj)
+
+            # 更新最佳结果逻辑
+            if loss < best_loss:
+                print(f"New best loss: {loss:.4f} (improved from {best_loss:.4f})")
+                best_loss = loss
+                with torch.no_grad():
+                    node_features, _ = model(
+                        torch.eye(adj.shape[0]).float().to(device),
+                        adj
+                    )
+                    best_feature = node_features.detach().cpu().numpy()
+                bad_counter = 0  # 重置计数器
             else:
-                print(f"Processing {network_name}")
+                bad_counter += 1  # 累计未改进次数
 
-            adj_path = os.path.join(ADJ_PATH, network_type + '_graph', network, network_name + '_adj.npy')
-            adj = pickle_read(adj_path)
-            adj = torch.FloatTensor(adj)
-            adj = normalize_adj_1(torch.FloatTensor(adj)).to(device)
+            # 早停判断（连续50次未改进）
+            if bad_counter >= 50:
+                print(f"Early stopping: No improvement for {bad_counter} epochs")
+                break
 
-            # 初始化变量
-            best_node_feature = None
-            best_loss = float('inf')
-
-            model = GAE(adj.shape[0], 48).to(device)
-            optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
-
-            t_total = time.time()
-            loss_values = []
-            bad_counter = 0
-            best_epoch = 0
-
-            for epoch in range(500):
-                loss_values.append(train(epoch, adj))
-
-                # 更新最优结果
-                if loss_values[-1] < best_loss:
-                    best_loss = loss_values[-1]
-                    best_epoch = epoch
-                    # 获取当前最优嵌入
-                    model.eval()
-                    with torch.no_grad():
-                        best_node_feature, _ = model(torch.tensor(np.identity(adj.shape[0])).float().to(device), adj)
-
-                    os.makedirs(os.path.dirname(embedding_path), exist_ok=True)
-                    # 保存最优嵌入
-                    # np.save(embedding_path, best_node_feature.detach().numpy())
-                    np.save(embedding_path, best_node_feature.detach().cpu().numpy())
-
-                    print(f"Best Loss: {best_loss}\nEpoch: {best_epoch}")
-                    # 早停机制
-                if epoch > 0 and loss_values[-1] >= loss_values[-2]:
-                    bad_counter += 1
-                else:
-                    bad_counter = 0  # 只要损失下降，就重置计数器
-
-                if bad_counter >= 50:
-                    print(f"Early stopping at epoch {epoch + 1} due to no improvement.")
-                    break
-
-            print("Optimization Finished!")
-            print("Total time elapsed: {}s".format(time.time() - t_total))
-
-            # 输出最优结果
-            print(f"Best Loss: {best_loss} at Epoch: {best_epoch}")
+        # 训练结束后统一保存
+        if best_feature is not None:
+            os.makedirs(os.path.dirname(embedding_path), exist_ok=True)
+            np.save(embedding_path, best_feature)
             print(f"Best embedding saved to: {embedding_path}")
+        else:
+            print("Warning: No valid embedding generated")
+
+        print(f"Optimization Finished! Total time: {time.time() - t_total:.1f}s")
+
+    for network in network_params:
+        params = network_params[network]
+        network_type = params['type']
+        print(f'Processing {network} graphs...')
+
+        entries = []
+        if network_type == 'realworld':
+            # Realworld 路径构造
+            adj_path = os.path.join(ADJ_PATH, f"{network}_adj.npy")
+            embedding_path = os.path.join(EMBEDDING_PATH, f"{network}_embedding.npy")
+            entries.append((network, adj_path, embedding_path))
+        else:
+            # 合成数据集路径构造
+            base_dir = f"{network_type}_graph"
+            for id in range(params['num']):
+                name = f"{network}_{id}"
+                adj_path = os.path.join(ADJ_PATH, base_dir, network, f"{name}_adj.npy")
+                embedding_path = os.path.join(EMBEDDING_PATH, base_dir, network, f"{name}_embedding.npy")
+                entries.append((name, adj_path, embedding_path))
+
+        for name, adj_path, embedding_path in entries:
+            GetEmbedding(name, adj_path, embedding_path)
 
 
 if __name__ == '__main__':
@@ -140,6 +143,10 @@ if __name__ == '__main__':
     with open("Network_Parameters_test.json", "r") as f:
         test_network_params = json.load(f)
 
+    with open("Network_Parameters_realworld.json", "r") as f:
+        realworld_network_params = json.load(f)
+
     GenerateEmbedding(TRAIN_EMBEDDING_PATH, TRAIN_ADJ_PATH, train_network_params)
     GenerateEmbedding(TEST_EMBEDDING_PATH, TEST_ADJ_PATH, test_network_params)
+    GenerateEmbedding(REALWORLD_EMBEDDING_PATH, REALWORLD_ADJ_PATH, realworld_network_params)
 
