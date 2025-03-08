@@ -1,16 +1,59 @@
 {
+    "AirTraffic": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 5000
+    },
+    "Bible": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 5000
+    },
     "DNCEmails": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.4,
+        "gamma": 0.1,
+        "simulations": 5000
+    },
+
+    "Genefusion": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 5000
+    },
+    "Infectious": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 5000
+    },
+    "karate_club_graph": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.3,
         "gamma": 0.1,
         "simulations": 10000
     },
-    "karate_club_graph": {
+    "LastFM": {
         "enable": true,
         "type" : "realworld",
-        "beta": 0.25,
+        "beta": 0.3,
         "gamma": 0.1,
-        "simulations": 10000
+        "simulations": 500
+    },
+    "PPI": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 5000
     }
 }

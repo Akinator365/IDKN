@@ -88,13 +88,53 @@ def plot_results(results, graph_type='BA'):
         plt.xticks(params)
 
     elif graph_type == 'realworld':
-        # Realworld数据集显示
-        networks = list(results.keys())
-        values = [np.nanmean(results[n]["statistics"]) for n in networks]
+        # 表格展示真实网络结果
+        networks = sorted(results.keys())
+        data = []
 
-        plt.bar(networks, values)
-        plt.xlabel("Dataset")
-        plt.xticks(rotation=45)
+        # 准备表格数据
+        for net in networks:
+            mean_stat = np.nanmean(results[net]["statistics"])
+            mean_pval = np.nanmean(results[net]["pvalues"])
+            data.append([
+                net,
+                f"{mean_stat:.4f}",
+                f"{10 ** mean_pval:.2e}" if mean_pval > -100 else "N/A"
+            ])
+
+        # 创建颜色数组（修复点）
+        n_rows = len(data)
+        n_cols = 3
+        colors = []
+        header_color = '#40466e'  # 深蓝色表头
+        colors.append([header_color] * n_cols)  # 表头颜色
+
+        # 数据行颜色（斑马条纹）
+        for i in range(n_rows - 1):
+            color = '#F5F5F5' if i % 2 == 0 else 'white'
+            colors.append([color] * n_cols)
+
+        # 创建表格
+        columns = ('Network', 'Kendall Tau', 'P-Value')
+        table = plt.table(
+            cellText=data,
+            colLabels=columns,
+            cellLoc='center',
+            loc='center',
+            cellColours=colors,  # 使用修正后的颜色数组
+            colWidths=[0.3, 0.3, 0.4],
+            edges='horizontal'  # 只显示水平分割线
+        )
+
+        # 设置表头样式
+        for (i, j), cell in table.get_celld().items():
+            if i == 0:  # 表头行
+                cell.set_text_props(color='white', weight='bold')
+                cell.set_edgecolor('white')
+
+        # 隐藏坐标轴
+        plt.axis('off')
+        plt.title("Realworld Networks Evaluation Results", pad=20)
 
     plt.ylabel("Average Kendall Tau")
     plt.title(f"Performance on {graph_type} Graphs")
@@ -128,10 +168,10 @@ if __name__ == '__main__':
     model = load_model(checkpoint_path, CGNN_New, device).eval()
 
     # 评估测试集
-    # with open("Network_Parameters_test.json") as f:
-    #     test_params = json.load(f)
-    # test_results = Evaluation(model, TEST_ADJ_PATH, TEST_LABELS_PATH, TEST_EMBEDDING_PATH, test_params, device)
-    # plot_results(test_results, graph_type='BA')
+    with open("Network_Parameters_test.json") as f:
+        test_params = json.load(f)
+    test_results = Evaluation(model, TEST_ADJ_PATH, TEST_LABELS_PATH, TEST_EMBEDDING_PATH, test_params, device)
+    plot_results(test_results, graph_type='BA')
 
     # 评估realworld数据集
     with open("Network_Parameters_realworld.json") as f:
