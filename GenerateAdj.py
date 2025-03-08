@@ -12,6 +12,7 @@ def GenerateAdj(ADJ_PATH, DATASET_PATH, network_params):
             return
         print(f"Processing {name}")
         G = nx.read_edgelist(graph_path)
+        print(G.number_of_nodes(), G.number_of_edges())
         g_adjacent_matrix = np.array(nx.adjacency_matrix(G).todense())
         os.makedirs(os.path.dirname(adj_path), exist_ok=True)
         pickle_save(adj_path, g_adjacent_matrix)

@@ -55,5 +55,75 @@
         "beta": 0.3,
         "gamma": 0.1,
         "simulations": 5000
+    },
+    "Cora": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 10
+    },
+    "Moreno_oz": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 10
+    },
+    "Arenas": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 10
+    },
+    "Filmtrust": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 10
+    },
+    "Faa": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 10
+    },
+    "Figeys": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 10
+    },
+    "Stelzl": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 10
+    },
+    "Moreno_names": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 10
+    },
+    "Powergri": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 10
+    },
+    "Usairport": {
+        "enable": true,
+        "type" : "realworld",
+        "beta": 0.3,
+        "gamma": 0.1,
+        "simulations": 10
     }
 }
