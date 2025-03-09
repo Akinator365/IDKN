@@ -7,8 +7,9 @@ import numpy as np
 import torch
 from torch.nn.functional import embedding
 from torch_geometric.graphgym import optim
+from torch_geometric.utils import dense_to_sparse
 
-from Model import GAE
+from Model import GAE, RevisedGAE
 from Utils import pickle_read, normalize_adj_1
 
 
@@ -56,9 +57,14 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
         print(f"Processing {name}")
         adj = pickle_read(adj_path)
         adj = torch.FloatTensor(adj)
-        adj = normalize_adj_1(adj).to(device)
+        # adj = normalize_adj_1(adj).to(device)
+        edge_index = RevisedGAE.preprocess_adj(adj)
 
-        model = GAE(adj.shape[0], 48).to(device)
+        # 输入特征（单位矩阵）
+        x = torch.eye(edge_index.shape[0]).float().to(device)
+
+        # model = GAE(adj.shape[0], 48).to(device)
+        model = RevisedGAE(adj.shape[0], 64).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
         t_total = time.time()
@@ -137,7 +143,7 @@ if __name__ == '__main__':
     torch.manual_seed(17)
 
     # 从文件中读取参数
-    with open("Network_Parameters.json", "r") as f:
+    with open("Network_Parameters_small.json", "r") as f:
         train_network_params = json.load(f)
 
     with open("Network_Parameters_test.json", "r") as f:
@@ -147,6 +153,6 @@ if __name__ == '__main__':
         realworld_network_params = json.load(f)
 
     GenerateEmbedding(TRAIN_EMBEDDING_PATH, TRAIN_ADJ_PATH, train_network_params)
-    GenerateEmbedding(TEST_EMBEDDING_PATH, TEST_ADJ_PATH, test_network_params)
-    GenerateEmbedding(REALWORLD_EMBEDDING_PATH, REALWORLD_ADJ_PATH, realworld_network_params)
+    # GenerateEmbedding(TEST_EMBEDDING_PATH, TEST_ADJ_PATH, test_network_params)
+    # GenerateEmbedding(REALWORLD_EMBEDDING_PATH, REALWORLD_ADJ_PATH, realworld_network_params)
 

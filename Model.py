@@ -1,7 +1,7 @@
 import numpy as np
 import scipy as sp
 from torch_geometric.nn import GATConv, GCNConv, global_mean_pool
-from torch_geometric.utils import add_self_loops, degree
+from torch_geometric.utils import add_self_loops, degree, dense_to_sparse
 from torch_geometric.datasets import Planetoid
 import torch
 import torch.nn.functional as F
@@ -254,6 +254,85 @@ class GAE(nn.Module):  # 编码器
         return x, A
 
 
+class RevisedGAE(nn.Module):
+    def __init__(self, num_nodes, latent_dim=48):
+        super().__init__()
+        self.num_nodes = num_nodes
+        # 编码器（遵循论文结构）
+        self.conv1 = GCNConv(num_nodes, 256)  # 自动处理自环和归一化
+        self.conv2 = GCNConv(256, 64)  # d/4=64
+
+        # 解码器
+        self.fc1 = nn.Linear(64, 256)
+        self.fc2 = nn.Linear(256, 1)
+
+    def forward(self, x, adj):
+        """
+        输入:
+        x: 单位矩阵 (n x n)
+        adj: 原始邻接矩阵 (n x n)
+
+        返回:
+        x: 节点嵌入 (n x d/4)
+        A: 重建的节点度预测 (n x 1)
+        """
+        # 转换邻接矩阵为PyG需要的边索引格式
+        edge_index, _ = dense_to_sparse(adj)
+        edge_index, _ = add_self_loops(edge_index)  # 确保自环存在
+
+        # 编码（每层动态处理A~）
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.relu(self.conv2(x, edge_index))
+
+        # 解码
+        A = self.fc1(x)
+        A = F.relu(A)
+        A = self.fc2(A)
+        return x, A.squeeze(dim=1)
+
+    @staticmethod
+    def preprocess_adj(adj_matrix):
+        """将稠密邻接矩阵转换为PyG需要的格式"""
+        edge_index, edge_attr = dense_to_sparse(adj_matrix)
+        edge_index, _ = add_self_loops(edge_index)
+        return edge_index
+
+class EnhancedGAE(nn.Module):
+    def __init__(self, input_dim, latent_dim=48):
+        super().__init__()
+        # 编码器
+        self.conv1 = GCNConv(input_dim, 256)
+        self.conv2 = GCNConv(256, 128)
+        self.conv3 = GCNConv(128, latent_dim)
+
+        # 解码器
+        self.degree_predictor = nn.Sequential(
+            nn.Linear(latent_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
+
+        # 正则化组件
+        self.bn1 = nn.BatchNorm1d(256)
+        self.dropout = nn.Dropout(0.3)
+        self.skip_conn = nn.Linear(input_dim, latent_dim)
+
+    def forward(self, x, edge_index):
+        identity = self.skip_conn(x)
+
+        # 编码过程
+        x = F.relu(self.bn1(self.conv1(x, edge_index)))
+        x = self.dropout(x)
+        x = F.relu(self.conv2(x, edge_index))
+        z = self.conv3(x, edge_index) + identity
+
+        # 解码过程
+        adj_recon = torch.sigmoid(torch.mm(z, z.t()))
+        degree_pred = self.degree_predictor(z)
+
+        return z, adj_recon, degree_pred.squeeze()
+
+
 class CNNnet(torch.nn.Module):
     def __init__(self):
         super(CNNnet, self).__init__()
@@ -313,7 +392,7 @@ class CGNN_New(torch.nn.Module):
     def __init__(self):
         super(CGNN_New, self).__init__()
         # CNN层
-        self.layer2 = GCNConv(48, 64)  # 使用GCNConv替代原始GNN层
+        self.layer2 = GCNConv(64, 64)  # 使用GCNConv替代原始GNN层
         self.layer3 = GCNConv(64, 32)  # 输入/输出特征维度需匹配
         self.fc = torch.nn.Linear(32, 1)
 

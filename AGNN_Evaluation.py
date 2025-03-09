@@ -161,22 +161,28 @@ if __name__ == '__main__':
     print(f"Using device: {device}")
 
     # 加载模型检查点
-    best = 572
-    checkpoint_path = f"./training/IDKN/2025-03-05_15-47-31/checkpoint_{best}_epoch.pkl"
+    best = 232
+    checkpoint_path = f"./training/IDKN/2025-03-09_21-06-44/checkpoint_{best}_epoch.pkl"
 
     # 加载模型和参数
     model = load_model(checkpoint_path, CGNN_New, device).eval()
 
+    # # 评估训练集
+    # with open("Network_Parameters_small.json") as f:
+    #     test_params = json.load(f)
+    # test_results = Evaluation(model, TRAIN_ADJ_PATH, TRAIN_LABELS_PATH, TRAIN_EMBEDDING_PATH, test_params, device)
+    # plot_results(test_results, graph_type='BA')
+
     # 评估测试集
-    with open("Network_Parameters_test.json") as f:
+    with open("Network_Parameters.json") as f:
         test_params = json.load(f)
     test_results = Evaluation(model, TEST_ADJ_PATH, TEST_LABELS_PATH, TEST_EMBEDDING_PATH, test_params, device)
     plot_results(test_results, graph_type='BA')
 
-    # 评估realworld数据集
-    with open("Network_Parameters_realworld.json") as f:
-        realworld_params = json.load(f)
-    realworld_results = Evaluation(model, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH,
-                                   REALWORLD_EMBEDDING_PATH, realworld_params, device)
-    plot_results(realworld_results, graph_type='realworld')
+    # # 评估realworld数据集
+    # with open("Network_Parameters_realworld.json") as f:
+    #     realworld_params = json.load(f)
+    # realworld_results = Evaluation(model, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH,
+    #                                REALWORLD_EMBEDDING_PATH, realworld_params, device)
+    # plot_results(realworld_results, graph_type='realworld')
 
