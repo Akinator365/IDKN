@@ -225,9 +225,11 @@ def ic_step(S, I, R, adj_list, beta):
 
 def simulate_node(node, adj_list, n, beta, gamma, simulations):
     count = 0
+    n = len(adj_list)
+    nodes = adj_list.keys()  # 获取所有实际节点
     for sim in range(simulations):
         # 初始化SIR状态
-        S = set(range(n))  # 易感者
+        S = set(nodes)  # 易感者
         I = {node}  # 选择种子节点作为感染者
         R = set()  # 康复者
 
