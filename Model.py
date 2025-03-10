@@ -288,14 +288,14 @@ class RevisedGAE(nn.Module):
         A = self.fc1(x)
         A = F.relu(A)
         A = self.fc2(A)
-        return x, A.squeeze(dim=1)
+        return x, A
 
     @staticmethod
-    def preprocess_adj(adj_matrix):
+    def preprocess_adj(adj_matrix, device):
         """将稠密邻接矩阵转换为PyG需要的格式"""
         edge_index, edge_attr = dense_to_sparse(adj_matrix)
         edge_index, _ = add_self_loops(edge_index)
-        return edge_index
+        return edge_index.to(device)
 
 class EnhancedGAE(nn.Module):
     def __init__(self, input_dim, latent_dim=48):

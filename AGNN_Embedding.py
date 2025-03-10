@@ -4,14 +4,14 @@ import random
 import time
 
 import numpy as np
+import scipy as sp
 import torch
 from torch.nn.functional import embedding
 from torch_geometric.graphgym import optim
 from torch_geometric.utils import dense_to_sparse
 
 from Model import GAE, RevisedGAE
-from Utils import pickle_read, normalize_adj_1
-
+from Utils import pickle_read, normalize_adj_1, sparse_adj_to_edge_index
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
@@ -55,10 +55,12 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
             return
 
         print(f"Processing {name}")
-        adj = pickle_read(adj_path)
-        adj = torch.FloatTensor(adj)
-        # adj = normalize_adj_1(adj).to(device)
-        edge_index = RevisedGAE.preprocess_adj(adj)
+        adj_sparse = sp.sparse.load_npz(adj_path)  # 加载压缩稀疏矩阵
+        adj = torch.FloatTensor(adj_sparse.toarray()).to(device) # 转换为密集矩阵
+        edge_index = sparse_adj_to_edge_index(adj_sparse, device=device, self_loops=True)  # 一步完成转换+自环
+        # adj = pickle_read(adj_path)
+        # adj = torch.FloatTensor(adj).to(device)
+        # edge_index = RevisedGAE.preprocess_adj(adj, device)
 
         # 输入特征（单位矩阵）
         x = torch.eye(edge_index.shape[0]).float().to(device)
@@ -112,7 +114,7 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
         entries = []
         if network_type == 'realworld':
             # Realworld 路径构造
-            adj_path = os.path.join(ADJ_PATH, f"{network}_adj.npy")
+            adj_path = os.path.join(ADJ_PATH, f"{network}_adj.npz")
             embedding_path = os.path.join(EMBEDDING_PATH, f"{network}_embedding.npy")
             entries.append((network, adj_path, embedding_path))
         else:
@@ -120,7 +122,7 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
             base_dir = f"{network_type}_graph"
             for id in range(params['num']):
                 name = f"{network}_{id}"
-                adj_path = os.path.join(ADJ_PATH, base_dir, network, f"{name}_adj.npy")
+                adj_path = os.path.join(ADJ_PATH, base_dir, network, f"{name}_adj.npz")
                 embedding_path = os.path.join(EMBEDDING_PATH, base_dir, network, f"{name}_embedding.npy")
                 entries.append((name, adj_path, embedding_path))
 
@@ -153,6 +155,6 @@ if __name__ == '__main__':
         realworld_network_params = json.load(f)
 
     GenerateEmbedding(TRAIN_EMBEDDING_PATH, TRAIN_ADJ_PATH, train_network_params)
-    # GenerateEmbedding(TEST_EMBEDDING_PATH, TEST_ADJ_PATH, test_network_params)
-    # GenerateEmbedding(REALWORLD_EMBEDDING_PATH, REALWORLD_ADJ_PATH, realworld_network_params)
+    GenerateEmbedding(TEST_EMBEDDING_PATH, TEST_ADJ_PATH, test_network_params)
+    GenerateEmbedding(REALWORLD_EMBEDDING_PATH, REALWORLD_ADJ_PATH, realworld_network_params)
 

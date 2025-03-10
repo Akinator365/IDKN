@@ -51,11 +51,13 @@ if __name__ == '__main__':
 
 
     # 加载真实网络的邻接矩阵、节点特征
-    adj_matrix = pickle_read(adj_path)
+    #adj_matrix = pickle_read(adj_path)
+    adj_sparse = sp.sparse.load_npz(adj_path)  # 加载压缩稀疏矩阵
+    edge_index = sparse_adj_to_edge_index(adj_sparse)  # 转换为边索引
     node_features = np.load(feature_path)
 
     # 转换为 edge_index 格式
-    edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0]  # 转为 edge_index 格式
+    #edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0]  # 转为 edge_index 格式
 
     # 对节点特征进行归一化（如果需要）
     node_features = min_max_normalization(node_features)

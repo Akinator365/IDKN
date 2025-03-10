@@ -6,6 +6,7 @@ import sys
 import numpy as np
 import scipy as sp
 import torch
+from torch_geometric.utils import add_self_loops
 
 
 def pickle_read(path):
@@ -16,6 +17,25 @@ def pickle_read(path):
 def pickle_save(path, data):
     with open(path, 'wb') as file:
         pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def sparse_adj_to_edge_index(adj_sparse, device='cpu', self_loops=False):
+    """将稀疏邻接矩阵转换为 PyG 格式的边索引（含自环边）"""
+    # 转换为 COO 格式获取行列索引
+    coo = adj_sparse.tocoo()
+
+    # 生成原始边索引
+    edge_index = torch.tensor(
+        [coo.row, coo.col],
+        dtype=torch.long,
+        device=device
+    )
+
+    if self_loops:
+        # 添加自环边
+        edge_index, _ = add_self_loops(edge_index)
+
+    return edge_index
 
 
 def get_logger(filename, verbosity=1, name=None):

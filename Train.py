@@ -83,13 +83,16 @@ if __name__ == '__main__':
             single_labels_path = os.path.join(labels_path, network_type + '_graph', network, network_name + '_labels.npy')
             single_roles_path = os.path.join(roles_path, network_type + '_graph', network, network_name + '_roles.npy')
 
-            adj_matrix = pickle_read(single_adj_path)
+            adj_sparse = sp.sparse.load_npz(adj_path)  # 加载压缩稀疏矩阵
+            edge_index = sparse_adj_to_edge_index(adj_sparse) # 转换为边索引
+
+            #adj_matrix = pickle_read(single_adj_path)
             node_features = np.load(single_features_path)
             labels = np.load(single_labels_path)
             roles = np.load(single_roles_path)
 
             # 假设 adj_matrix 是一个邻接矩阵，我们需要将其转为边索引格式
-            edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0]  # 转为 edge_index 格式
+            #edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0]  # 转为 edge_index 格式
 
             # 对节点特征进行归一化
             node_features = min_max_normalization(node_features)  # 归一化操作

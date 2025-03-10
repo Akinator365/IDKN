@@ -4,7 +4,7 @@ import os
 import random
 import sys
 import time
-
+import scipy as sp
 import numpy as np
 import torch
 from scipy.stats import kendalltau
@@ -14,7 +14,7 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.utils import dense_to_sparse, to_dense_adj
 
 from Model import CGNN, CGNN_New
-from Utils import pickle_read, get_logger
+from Utils import pickle_read, get_logger, sparse_adj_to_edge_index
 
 # DEFAULT_EPS = 1e-10
 DEFAULT_EPS = 0.0001
@@ -158,7 +158,7 @@ if __name__ == '__main__':
         IDKN_logger.info(f'Processing {network} graphs...')
         for id in range(num_graph):
             network_name = f"{network}_{id}"
-            single_adj_path = os.path.join(adj_path, network_type + '_graph', network, network_name + '_adj.npy')
+            single_adj_path = os.path.join(adj_path, network_type + '_graph', network, network_name + '_adj.npz')
             single_labels_path = os.path.join(labels_path, network_type + '_graph', network, network_name + '_labels.npy')
             single_embedding_path = os.path.join(embedding_path, network_type + '_graph', network, network_name + '_embedding.npy')
 
@@ -166,12 +166,16 @@ if __name__ == '__main__':
             # 转换为 PyTorch 张量
             x = torch.FloatTensor(node_feature)
 
-            adj_matrix = pickle_read(single_adj_path)
-            adj = torch.FloatTensor(adj_matrix)
+            adj_sparse = sp.sparse.load_npz(single_adj_path)  # 加载压缩稀疏矩阵
+            adj_matrix = torch.FloatTensor(adj_sparse.toarray())  # 转换为密集矩阵
+            edge_index = sparse_adj_to_edge_index(adj_sparse) # 转换为边索引
+
+            # adj_matrix = pickle_read(single_adj_path)
+            # adj = torch.FloatTensor(adj_matrix)
             labels = np.load(single_labels_path)
 
             # adj_matrix 是一个邻接矩阵，我们需要将其转为边索引格式
-            edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0]  # 转为 edge_index 格式
+            # edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0]  # 转为 edge_index 格式
 
             # 计算节点数
             num_nodes = adj_matrix.shape[0] # 根据 adj_matrix 计算节点数：num_nodes = adj_matrix.shape[0]

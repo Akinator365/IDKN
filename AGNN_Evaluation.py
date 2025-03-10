@@ -2,6 +2,7 @@ import json
 import os
 
 import numpy as np
+import scipy as sp
 import torch
 from matplotlib import pyplot as plt
 from scipy.stats import kendalltau
@@ -9,7 +10,7 @@ from torch_geometric.utils import dense_to_sparse
 
 from AGNN_Train import load_model
 from Model import CGNN, CGNN_New
-from Utils import pickle_read, check_embeddings
+from Utils import pickle_read, check_embeddings, sparse_adj_to_edge_index
 
 
 def Evaluation(model, ADJ_PATH, LABELS_PATH, EMBEDDING_PATH, network_params, device):
@@ -23,7 +24,7 @@ def Evaluation(model, ADJ_PATH, LABELS_PATH, EMBEDDING_PATH, network_params, dev
 
         # 生成处理条目
         if network_type == 'realworld':
-            adj_path = os.path.join(ADJ_PATH, f"{network}_adj.npy")
+            adj_path = os.path.join(ADJ_PATH, f"{network}_adj.npz")
             label_path = os.path.join(LABELS_PATH, f"{network}_labels.npy")
             embedding_path = os.path.join(EMBEDDING_PATH, f"{network}_embedding.npy")
             entries.append((network, adj_path, label_path, embedding_path))
@@ -31,7 +32,7 @@ def Evaluation(model, ADJ_PATH, LABELS_PATH, EMBEDDING_PATH, network_params, dev
             base_dir = f"{network_type}_graph"
             for id in range(params['num']):
                 name = f"{network}_{id}"
-                adj_path = os.path.join(ADJ_PATH, base_dir, network, f"{name}_adj.npy")
+                adj_path = os.path.join(ADJ_PATH, base_dir, network, f"{name}_adj.npz")
                 label_path = os.path.join(LABELS_PATH, base_dir, network, f"{name}_labels.npy")
                 embedding_path = os.path.join(EMBEDDING_PATH, base_dir, network, f"{name}_embedding.npy")
                 entries.append((name, adj_path, label_path, embedding_path))
@@ -43,8 +44,11 @@ def Evaluation(model, ADJ_PATH, LABELS_PATH, EMBEDDING_PATH, network_params, dev
                 continue
 
             # 数据加载
-            adj_matrix = pickle_read(adj_path)
-            edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0].to(device)
+            adj_sparse = sp.sparse.load_npz(adj_path)  # 加载压缩稀疏矩阵
+            edge_index = sparse_adj_to_edge_index(adj_sparse, device=device) # 转换为边索引
+
+            # adj_matrix = pickle_read(adj_path)
+            # edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0].to(device)
             node_feature = torch.FloatTensor(np.load(embedding_path)).to(device)
             label = torch.tensor(np.load(label_path)).float().to(device)
 
@@ -161,8 +165,8 @@ if __name__ == '__main__':
     print(f"Using device: {device}")
 
     # 加载模型检查点
-    best = 232
-    checkpoint_path = f"./training/IDKN/2025-03-09_21-06-44/checkpoint_{best}_epoch.pkl"
+    best = 164
+    checkpoint_path = f"./training/IDKN/2025-03-10_09-53-53/checkpoint_{best}_epoch.pkl"
 
     # 加载模型和参数
     model = load_model(checkpoint_path, CGNN_New, device).eval()
@@ -174,15 +178,15 @@ if __name__ == '__main__':
     # plot_results(test_results, graph_type='BA')
 
     # 评估测试集
-    with open("Network_Parameters.json") as f:
+    with open("Network_Parameters_test.json") as f:
         test_params = json.load(f)
     test_results = Evaluation(model, TEST_ADJ_PATH, TEST_LABELS_PATH, TEST_EMBEDDING_PATH, test_params, device)
     plot_results(test_results, graph_type='BA')
 
-    # # 评估realworld数据集
-    # with open("Network_Parameters_realworld.json") as f:
-    #     realworld_params = json.load(f)
-    # realworld_results = Evaluation(model, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH,
-    #                                REALWORLD_EMBEDDING_PATH, realworld_params, device)
-    # plot_results(realworld_results, graph_type='realworld')
+    # 评估realworld数据集
+    with open("Network_Parameters_realworld.json") as f:
+        realworld_params = json.load(f)
+    realworld_results = Evaluation(model, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH,
+                                   REALWORLD_EMBEDDING_PATH, realworld_params, device)
+    plot_results(realworld_results, graph_type='realworld')
 

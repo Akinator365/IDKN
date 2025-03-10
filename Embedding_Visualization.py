@@ -1,4 +1,6 @@
 import matplotlib.pyplot as plt
+import scipy as sp
+import torch
 from sklearn.manifold import TSNE
 import os
 import json
@@ -51,7 +53,8 @@ if __name__ == '__main__':
     embedding_path = os.path.join(TRAIN_EMBEDDING_PATH, network_type + '_graph', network, network_name + "_embedding.npy")
     embeddings = np.load(embedding_path)
     adj_path = os.path.join(TRAIN_ADJ_PATH, network_type + '_graph', network, network_name + '_adj.npy')
-    adj = pickle_read(adj_path)
+    adj_sparse = sp.sparse.load_npz(adj_path)  # 加载压缩稀疏矩阵
+    adj = torch.FloatTensor(adj_sparse.toarray())  # 转换为密集矩阵
     node_degrees = adj.sum(axis=1)
 
     visualize_embeddings(embeddings, node_degrees)
