@@ -1,17 +1,28 @@
 import json
 import os
 
+import networkx as nx
+from networkx.convert_matrix import from_scipy_sparse_array
 import numpy as np
 import scipy as sp
 import torch
 from matplotlib import pyplot as plt
-from scipy.stats import kendalltau
-from torch_geometric.utils import dense_to_sparse
+from scipy.stats import kendalltau, rankdata
 
 from AGNN_Train import load_model
 from Model import CGNN, CGNN_New
-from Utils import pickle_read, check_embeddings, sparse_adj_to_edge_index
+from Utils import sparse_adj_to_edge_index
 
+
+def jaccard_similarity(output_rank, true_rank, k=10):
+    # 提取前k个元素（需处理可能的重复项）
+    pred_top_k = set(np.argsort(-output_rank)[:k])
+    true_top_k = set(np.argsort(-true_rank)[:k])
+
+    intersection = len(pred_top_k & true_top_k)
+    union = len(pred_top_k | true_top_k)
+
+    return intersection / union if union != 0 else 0.0
 
 def Evaluation(model, ADJ_PATH, LABELS_PATH, EMBEDDING_PATH, network_params, device):
     """统一评估函数，支持所有数据集类型"""
@@ -46,9 +57,9 @@ def Evaluation(model, ADJ_PATH, LABELS_PATH, EMBEDDING_PATH, network_params, dev
             # 数据加载
             adj_sparse = sp.sparse.load_npz(adj_path)  # 加载压缩稀疏矩阵
             edge_index = sparse_adj_to_edge_index(adj_sparse, device=device) # 转换为边索引
+            # 将稀疏矩阵恢复成networkx的图G
+            # G = nx.from_scipy_sparse_array(adj_sparse, parallel_edges=False)
 
-            # adj_matrix = pickle_read(adj_path)
-            # edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0].to(device)
             node_feature = torch.FloatTensor(np.load(embedding_path)).to(device)
             label = torch.tensor(np.load(label_path)).float().to(device)
 
@@ -57,14 +68,47 @@ def Evaluation(model, ADJ_PATH, LABELS_PATH, EMBEDDING_PATH, network_params, dev
                 output = model(node_feature, edge_index)
 
             # 计算指标
+            output_np = output.cpu().numpy().flatten()  # 确保输出为一维数组
+            label_np = label.cpu().numpy().flatten()
+
+            # 1. 计算Kendall's Tau
             stat, pval = kendalltau(output.cpu().numpy(), label.cpu().numpy())
             log_pval = np.log10(pval) if pval > 0 else -100
 
+            # 2. 计算单调性指数（MI）
+            # 生成排名：分数越高排名越前，使用'dense'处理并列（如[1,1,2]）
+            ranks = rankdata(-output_np, method='dense')
+            # 统计每个等级的元素数量
+            unique, counts = np.unique(ranks, return_counts=True)
+            sum_n_alpha = np.sum(counts * (counts - 1))  # Σ[N_α*(N_α-1)]
+            N = len(output_np)
+            # 计算MI（处理N<=1的边界情况）
+            if N <= 1:
+                mi = 1.0
+            else:
+                mi = (1 - sum_n_alpha / (N * (N - 1))) ** 2
+
+            # 3. 计算杰卡德相似度（前10%、20%、30%、40%、50%）
+            percentages = [0.1, 0.2, 0.3, 0.4, 0.5]
+            jaccard_scores = []
+
+            for p in percentages:
+                # 计算前k个元素数量（至少1个）
+                k = max(1, int(N * p))
+
+                # 计算杰卡德相似度
+                jaccard = jaccard_similarity(output_np, label_np, k)
+
+                # 存储到数组
+                jaccard_scores.append(jaccard)  # 按顺序存入数组
+
             # 存储结果
             if network not in results:
-                results[network] = {"statistics": [], "pvalues": []}
+                results[network] = {"statistics": [], "pvalues": [], "MI": [], "Jaccard": [] }
             results[network]["statistics"].append(stat)
             results[network]["pvalues"].append(log_pval)
+            results[network]["MI"].append(mi)  # 添加MI值
+            results[network]["Jaccard"].append(jaccard_scores)
             print(f"{name} tau:{stat:.4f}")
 
     return results

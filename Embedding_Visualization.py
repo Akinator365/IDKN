@@ -43,7 +43,7 @@ if __name__ == '__main__':
         network_params = json.load(f)
 
     #for network in network_params:
-    network = 'BA_500_3'
+    network = 'BA_2000_3'
     network_type = network_params[network]['type']
     num_graph = network_params[network]['num']
     print(f'Processing {network} graphs...')
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     network_name = f"{network}_{id}"
     embedding_path = os.path.join(TRAIN_EMBEDDING_PATH, network_type + '_graph', network, network_name + "_embedding.npy")
     embeddings = np.load(embedding_path)
-    adj_path = os.path.join(TRAIN_ADJ_PATH, network_type + '_graph', network, network_name + '_adj.npy')
+    adj_path = os.path.join(TRAIN_ADJ_PATH, network_type + '_graph', network, network_name + '_adj.npz')
     adj_sparse = sp.sparse.load_npz(adj_path)  # 加载压缩稀疏矩阵
     adj = torch.FloatTensor(adj_sparse.toarray())  # 转换为密集矩阵
     node_degrees = adj.sum(axis=1)

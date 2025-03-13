@@ -413,13 +413,3 @@ class CGNN_New(torch.nn.Module):
         x = self.fc(x)  # [num_nodes, 1]
         x = x.squeeze(-1)  # [num_nodes]
         return x
-
-class ListMLE(nn.Module):
-    def __init__(self):
-        super(ListMLE, self).__init__()
-    def forward(self, outputs, labels):
-        scores = torch.zeros_like(outputs)
-        for t in range(scores.size()[0]):
-            scores[t] = torch.logcumsumexp(outputs[t, labels[t]], dim=0)
-        loss = torch.mean(scores - outputs)
-        return loss
