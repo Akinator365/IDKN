@@ -255,7 +255,49 @@ class GAE(nn.Module):  # 编码器
 
 
 class RevisedGAE(nn.Module):
-    def __init__(self, num_nodes, latent_dim=48):
+    def __init__(self, num_nodes):
+        super().__init__()
+        self.num_nodes = num_nodes
+        # 编码器
+        self.conv1 = GCNConv(num_nodes, 512)  # 扩大输入维度
+        self.conv2 = GCNConv(512, 128)
+
+        # 解码器
+        self.fc1 = nn.Linear(128, 256)
+        self.fc2 = nn.Linear(256, 1)
+
+        self.register_buffer('x', torch.eye(num_nodes))  # 注册为缓冲区
+
+    def forward(self, adj):
+        x = self.x  # 直接使用缓存的单位矩阵
+        """
+        输入:
+        x: 单位矩阵 (n x n)
+        adj: 原始邻接矩阵 (n x n)
+
+        返回:
+        x: 节点嵌入 (n x d/4)
+        A: 重建的节点度预测 (n x 1)
+        """
+        # 转换邻接矩阵为PyG需要的边索引格式
+        edge_index, _ = dense_to_sparse(adj)
+        edge_index, _ = add_self_loops(edge_index)  # 确保自环存在
+
+        # 编码（每层动态处理A~）
+        x = self.conv1(x, edge_index)
+        x = torch.nn.functional.leaky_relu(x, negative_slope=0.01)
+        x = self.conv2(x, edge_index)
+        x = torch.nn.functional.leaky_relu(x, negative_slope=0.01)
+
+
+        # 解码
+        A = self.fc1(x)
+        A = torch.nn.functional.leaky_relu(A, negative_slope=0.01)
+        A = self.fc2(A)
+        return x, A
+
+class optimitzedGAE(nn.Module):
+    def __init__(self, num_nodes):
         super().__init__()
         self.num_nodes = num_nodes
         # 编码器（遵循论文结构）
@@ -266,7 +308,10 @@ class RevisedGAE(nn.Module):
         self.fc1 = nn.Linear(64, 256)
         self.fc2 = nn.Linear(256, 1)
 
-    def forward(self, x, adj):
+        self.register_buffer('x', torch.eye(num_nodes))  # 注册为缓冲区
+
+    def forward(self, adj):
+        x = self.x  # 直接使用缓存的单位矩阵
         """
         输入:
         x: 单位矩阵 (n x n)
@@ -289,13 +334,6 @@ class RevisedGAE(nn.Module):
         A = F.relu(A)
         A = self.fc2(A)
         return x, A
-
-    @staticmethod
-    def preprocess_adj(adj_matrix, device):
-        """将稠密邻接矩阵转换为PyG需要的格式"""
-        edge_index, edge_attr = dense_to_sparse(adj_matrix)
-        edge_index, _ = add_self_loops(edge_index)
-        return edge_index.to(device)
 
 class EnhancedGAE(nn.Module):
     def __init__(self, input_dim, latent_dim=48):
@@ -392,8 +430,9 @@ class CGNN_New(torch.nn.Module):
     def __init__(self):
         super(CGNN_New, self).__init__()
         # CNN层
-        self.layer2 = GCNConv(64, 64)  # 使用GCNConv替代原始GNN层
-        self.layer3 = GCNConv(64, 32)  # 输入/输出特征维度需匹配
+        self.layer1 = GCNConv(64, 256)  # 使用GCNConv替代原始GNN层
+        self.layer2 = GCNConv(256, 128)  # 使用GCNConv替代原始GNN层
+        self.layer3 = GCNConv(128, 32)  # 输入/输出特征维度需匹配
         self.fc = torch.nn.Linear(32, 1)
 
         # 更精细的初始化
@@ -401,13 +440,13 @@ class CGNN_New(torch.nn.Module):
 
     def forward(self, x, edge_index):
         # 1. 使用edge_index进行图卷积
+        x = self.layer1(x, edge_index)
+        x = torch.nn.functional.leaky_relu(x, negative_slope=0.01)
         x = self.layer2(x, edge_index)
-        x = torch.relu(x)
+        x = torch.nn.functional.leaky_relu(x, negative_slope=0.01)
         x = self.layer3(x, edge_index)
-        x = torch.relu(x)
+        x = torch.nn.functional.leaky_relu(x, negative_slope=0.01)
 
-        # 全局池化（适应不同图大小）
-        # x = torch.mean(x, dim=0)  # 或其他池化方式
 
         # 2. 修改全连接层处理方式
         x = self.fc(x)  # [num_nodes, 1]

@@ -2,7 +2,6 @@ import json
 import os
 
 import networkx as nx
-from networkx.convert_matrix import from_scipy_sparse_array
 import numpy as np
 import scipy as sp
 import torch
@@ -209,8 +208,8 @@ if __name__ == '__main__':
     print(f"Using device: {device}")
 
     # 加载模型检查点
-    best = 164
-    checkpoint_path = f"./training/IDKN/2025-03-10_09-53-53/checkpoint_{best}_epoch.pkl"
+    best = 257
+    checkpoint_path = f"./training/IDKN/2025-03-21_11-00-22/checkpoint_{best}_epoch.pkl"
 
     # 加载模型和参数
     model = load_model(checkpoint_path, CGNN_New, device).eval()
@@ -222,7 +221,7 @@ if __name__ == '__main__':
     # plot_results(test_results, graph_type='BA')
 
     # 评估测试集
-    with open("Network_Parameters_test.json") as f:
+    with open("Network_Parameters_test_middle.json") as f:
         test_params = json.load(f)
     test_results = Evaluation(model, TEST_ADJ_PATH, TEST_LABELS_PATH, TEST_EMBEDDING_PATH, test_params, device)
     plot_results(test_results, graph_type='BA')

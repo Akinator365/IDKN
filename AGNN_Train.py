@@ -147,7 +147,7 @@ if __name__ == '__main__':
     sys.stdout = IDKN_logger  # 让 print() 也写入日志
 
     # 从文件中读取参数
-    with open("Network_Parameters_small.json", "r") as f:
+    with open("Network_Parameters_middle.json", "r") as f:
         network_params = json.load(f)
 
     data_list = []  # 用于存储多个图的数据

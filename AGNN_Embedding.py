@@ -10,7 +10,7 @@ from torch.nn.functional import embedding
 from torch_geometric.graphgym import optim
 from torch_geometric.utils import dense_to_sparse
 
-from Model import GAE, RevisedGAE
+from Model import GAE, RevisedGAE, optimitzedGAE
 from Utils import pickle_read, normalize_adj_1, sparse_adj_to_edge_index
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -23,10 +23,10 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
             t = time.time()
             model.train()
 
-            x = torch.tensor(np.identity(adj.shape[0]), dtype=torch.float).to(device)
+            # x = torch.tensor(np.identity(adj.shape[0]), dtype=torch.float).to(device)
             adj = adj.to(device)  # 确保 adj 在 GPU
 
-            x, A = model(x, adj)
+            x, A = model(adj)
 
             # loss_train = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
             loss_train = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
@@ -38,7 +38,7 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
             # 计算验证损失 (避免梯度计算)
             model.eval()
             with torch.no_grad():
-                x, A = model(torch.tensor(np.identity(adj.shape[0])).float().to(device), adj)
+                x, A = model(adj)
                 # loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
                 loss_val = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
 
@@ -63,10 +63,10 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
         # edge_index = RevisedGAE.preprocess_adj(adj, device)
 
         # 输入特征（单位矩阵）
-        x = torch.eye(edge_index.shape[0]).float().to(device)
+        # x = torch.eye(edge_index.shape[0]).float().to(device)
 
         # model = GAE(adj.shape[0], 48).to(device)
-        model = RevisedGAE(adj.shape[0], 64).to(device)
+        model = optimitzedGAE(adj.shape[0]).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
         t_total = time.time()
@@ -83,7 +83,6 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
                 best_loss = loss
                 with torch.no_grad():
                     node_features, _ = model(
-                        torch.eye(adj.shape[0]).float().to(device),
                         adj
                     )
                     best_feature = node_features.detach().cpu().numpy()
@@ -145,10 +144,10 @@ if __name__ == '__main__':
     torch.manual_seed(17)
 
     # 从文件中读取参数
-    with open("Network_Parameters_small.json", "r") as f:
+    with open("Network_Parameters_middle.json", "r") as f:
         train_network_params = json.load(f)
 
-    with open("Network_Parameters_test.json", "r") as f:
+    with open("Network_Parameters_test_middle.json", "r") as f:
         test_network_params = json.load(f)
 
     with open("Network_Parameters_realworld.json", "r") as f:
