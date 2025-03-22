@@ -74,7 +74,7 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
         best_feature = None  # 存储最佳嵌入的变量
         bad_counter = 0
 
-        for epoch in range(500):
+        for epoch in range(1000):
             loss = train(epoch, adj)
 
             # 更新最佳结果逻辑
@@ -144,10 +144,10 @@ if __name__ == '__main__':
     torch.manual_seed(17)
 
     # 从文件中读取参数
-    with open("Network_Parameters_middle.json", "r") as f:
+    with open("Network_Parameters_small.json", "r") as f:
         train_network_params = json.load(f)
 
-    with open("Network_Parameters_test_middle.json", "r") as f:
+    with open("Network_Parameters_test.json", "r") as f:
         test_network_params = json.load(f)
 
     with open("Network_Parameters_realworld.json", "r") as f:

@@ -301,11 +301,11 @@ class optimitzedGAE(nn.Module):
         super().__init__()
         self.num_nodes = num_nodes
         # 编码器（遵循论文结构）
-        self.conv1 = GCNConv(num_nodes, 256)  # 自动处理自环和归一化
-        self.conv2 = GCNConv(256, 64)  # d/4=64
+        self.conv1 = GCNConv(num_nodes, 512)  # 自动处理自环和归一化
+        self.conv2 = GCNConv(512, 128)  # d/4=64
 
         # 解码器
-        self.fc1 = nn.Linear(64, 256)
+        self.fc1 = nn.Linear(128, 256)
         self.fc2 = nn.Linear(256, 1)
 
         self.register_buffer('x', torch.eye(num_nodes))  # 注册为缓冲区
@@ -430,7 +430,7 @@ class CGNN_New(torch.nn.Module):
     def __init__(self):
         super(CGNN_New, self).__init__()
         # CNN层
-        self.layer1 = GCNConv(64, 256)  # 使用GCNConv替代原始GNN层
+        self.layer1 = GCNConv(128, 256)  # 使用GCNConv替代原始GNN层
         self.layer2 = GCNConv(256, 128)  # 使用GCNConv替代原始GNN层
         self.layer3 = GCNConv(128, 32)  # 输入/输出特征维度需匹配
         self.fc = torch.nn.Linear(32, 1)
