@@ -258,48 +258,6 @@ class RevisedGAE(nn.Module):
     def __init__(self, num_nodes):
         super().__init__()
         self.num_nodes = num_nodes
-        # 编码器
-        self.conv1 = GCNConv(num_nodes, 512)  # 扩大输入维度
-        self.conv2 = GCNConv(512, 128)
-
-        # 解码器
-        self.fc1 = nn.Linear(128, 256)
-        self.fc2 = nn.Linear(256, 1)
-
-        self.register_buffer('x', torch.eye(num_nodes))  # 注册为缓冲区
-
-    def forward(self, adj):
-        x = self.x  # 直接使用缓存的单位矩阵
-        """
-        输入:
-        x: 单位矩阵 (n x n)
-        adj: 原始邻接矩阵 (n x n)
-
-        返回:
-        x: 节点嵌入 (n x d/4)
-        A: 重建的节点度预测 (n x 1)
-        """
-        # 转换邻接矩阵为PyG需要的边索引格式
-        edge_index, _ = dense_to_sparse(adj)
-        edge_index, _ = add_self_loops(edge_index)  # 确保自环存在
-
-        # 编码（每层动态处理A~）
-        x = self.conv1(x, edge_index)
-        x = torch.nn.functional.leaky_relu(x, negative_slope=0.01)
-        x = self.conv2(x, edge_index)
-        x = torch.nn.functional.leaky_relu(x, negative_slope=0.01)
-
-
-        # 解码
-        A = self.fc1(x)
-        A = torch.nn.functional.leaky_relu(A, negative_slope=0.01)
-        A = self.fc2(A)
-        return x, A
-
-class optimitzedGAE(nn.Module):
-    def __init__(self, num_nodes):
-        super().__init__()
-        self.num_nodes = num_nodes
         # 编码器（遵循论文结构）
         self.conv1 = GCNConv(num_nodes, 512)  # 自动处理自环和归一化
         self.conv2 = GCNConv(512, 128)  # d/4=64
@@ -334,6 +292,46 @@ class optimitzedGAE(nn.Module):
         A = F.relu(A)
         A = self.fc2(A)
         return x, A
+
+
+class optimitzedGAE(nn.Module):
+    def __init__(self, num_nodes):
+        super().__init__()
+        self.num_nodes = num_nodes
+        # 编码器（遵循论文结构）
+        self.conv1 = GCNConv(num_nodes, 512)  # 自动处理自环和归一化
+        self.conv2 = GCNConv(512, 128)  # d/4=64
+
+        # 解码器
+        self.fc1 = nn.Linear(128, 256)
+        self.fc2 = nn.Linear(256, 128)
+
+        self.register_buffer('x', torch.eye(num_nodes))  # 注册为缓冲区
+
+    def forward(self, adj):
+        x = self.x  # 直接使用缓存的单位矩阵
+        """
+        输入:
+        x: 单位矩阵 (n x n)
+        adj: 原始邻接矩阵 (n x n)
+
+        返回:
+        x: 节点嵌入 (n x d/4)
+        A: 重建的节点度预测 (n x 1)
+        """
+        # 转换邻接矩阵为PyG需要的边索引格式
+        edge_index, _ = dense_to_sparse(adj)
+        edge_index, _ = add_self_loops(edge_index)  # 确保自环存在
+
+        # 编码（每层动态处理A~）
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.relu(self.conv2(x, edge_index))
+
+        # 解码
+        A = self.fc1(x)
+        A = F.relu(A)
+        A = self.fc2(A)
+        return x, F.normalize(A, p=2, dim=1)
 
 class EnhancedGAE(nn.Module):
     def __init__(self, input_dim, latent_dim=48):

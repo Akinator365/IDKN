@@ -9,7 +9,7 @@ import torch
 from torch.nn.functional import embedding
 from torch_geometric.graphgym import optim
 from torch_geometric.utils import dense_to_sparse
-
+import torch.nn.functional as F
 from Model import GAE, RevisedGAE, optimitzedGAE
 from Utils import pickle_read, normalize_adj_1, sparse_adj_to_edge_index
 
@@ -49,7 +49,40 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
 
                   'time: {}s'.format(time.time() - t))
             return loss_train.data.item()
+        # 定义训练函数在闭包内部以共享模型参数
+        def train_vec(epoch, adj, embedding):
+            t = time.time()
+            model.train()
+            embedding = F.normalize(embedding.to(device), p=2, dim=1)
+            embedding = embedding.to(device)
 
+            # x = torch.tensor(np.identity(adj.shape[0]), dtype=torch.float).to(device)
+            adj = adj.to(device)  # 确保 adj 在 GPU
+
+            x, A = model(adj)
+
+            # loss_train = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
+            # loss_train = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
+            loss_train = 1 - F.cosine_similarity(A, embedding).mean()  # 平均余弦相似度损失
+
+            optimizer.zero_grad()
+            loss_train.backward()
+            optimizer.step()
+
+            # 计算验证损失 (避免梯度计算)
+            model.eval()
+            with torch.no_grad():
+                x, A = model(adj)
+                # loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
+                loss_val = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
+
+            print('Epoch: {:04d}'.format(epoch + 1),
+                  'loss_train: {}'.format(loss_train.data.item()),
+
+                  'loss_val: {}'.format(loss_val.data.item()),
+
+                  'time: {}s'.format(time.time() - t))
+            return loss_train.data.item()
         if os.path.exists(embedding_path):
             print(f"File {embedding_path} already exists, skipping...")
             return
