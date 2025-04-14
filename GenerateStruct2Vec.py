@@ -133,6 +133,6 @@ if __name__ == "__main__":
     with open("Network_Parameters_realworld.json", "r") as f:
         realworld_network_params = json.load(f)
 
-    GenerateStruct2Vec(TRAIN_STR_PATH, TRAIN_EMB_PATH, TRAIN_DATASET_PATH, train_network_params)
+    # GenerateStruct2Vec(TRAIN_STR_PATH, TRAIN_EMB_PATH, TRAIN_DATASET_PATH, train_network_params)
     GenerateStruct2Vec(TEST_STR_PATH, TEST_EMB_PATH, TEST_DATASET_PATH, test_network_params)
     GenerateStruct2Vec(REALWORLD_STR_PATH, REALWORLD_EMB_PATH, REALWORLD_DATASET_PATH, realworld_network_params)

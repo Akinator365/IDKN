@@ -15,11 +15,11 @@ def GenerateNode2Vec(VEC_PATH, DATASET_PATH, network_params):
         print(G.number_of_nodes(), G.number_of_edges())
 
         # Node2Vec参数设置
-        node2vec = Node2Vec(G, dimensions=128, walk_length=30, num_walks=300, workers=12)
+        node2vec = Node2Vec(G, dimensions=128, walk_length=30, num_walks=300, workers=60)
         model = node2vec.fit(window=10, min_count=1)
 
         # 提取嵌入并保存
-        embeddings = np.array([model.wv[str(i)] for i in range(len(G))])
+        embeddings = np.array([model.wv[str(node)] for node in G.nodes()])
         os.makedirs(os.path.dirname(vec_path), exist_ok=True)
         np.save(vec_path, embeddings)
         print(f'pickle of {name} saved')
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     REALWORLD_VEC_PATH = os.path.join(os.getcwd(), 'data', 'vec', 'realworld')
 
     # 从文件中读取参数
-    with open("Network_Parameters_small.json", "r") as f:
+    with open("Network_Parameters.json", "r") as f:
         train_network_params = json.load(f)
 
     with open("Network_Parameters_test.json", "r") as f:

@@ -301,10 +301,16 @@ class optimitzedGAE(nn.Module):
         # 编码器（遵循论文结构）
         self.conv1 = GCNConv(num_nodes, 512)  # 自动处理自环和归一化
         self.conv2 = GCNConv(512, 128)  # d/4=64
+        # self.res_linear = nn.Linear(512, 128)  # 残差投影层
+        # self.dropout = nn.Dropout(0.2)  # 防止过拟合
 
         # 解码器
         self.fc1 = nn.Linear(128, 256)
         self.fc2 = nn.Linear(256, 128)
+        # self.fc1 = nn.Linear(128, 512)
+        # self.fc2 = nn.Linear(512, 256)
+        # self.fc3 = nn.Linear(256, 128)
+
 
         self.register_buffer('x', torch.eye(num_nodes))  # 注册为缓冲区
 
@@ -325,12 +331,20 @@ class optimitzedGAE(nn.Module):
 
         # 编码（每层动态处理A~）
         x = F.relu(self.conv1(x, edge_index))
+        # x = self.dropout(x)
+        # x_conv1 = x
         x = F.relu(self.conv2(x, edge_index))
+
+        # 残差连接（通过投影调整维度）
+        # x = x + self.res_linear(x_conv1)  # [N,128] + [N,128]
 
         # 解码
         A = self.fc1(x)
         A = F.relu(A)
         A = self.fc2(A)
+        # A = F.relu(A)
+        # A = self.fc3(A)
+
         return x, F.normalize(A, p=2, dim=1)
 
 class EnhancedGAE(nn.Module):

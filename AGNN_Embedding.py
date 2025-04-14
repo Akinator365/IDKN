@@ -16,8 +16,8 @@ from Utils import pickle_read, normalize_adj_1, sparse_adj_to_edge_index
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
-    def GetEmbedding(name, adj_path, embedding_path):
+def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
+    def GetEmbedding(name, adj_path, vec_path, embedding_path):
         # 定义训练函数在闭包内部以共享模型参数
         def train(epoch, adj):
             t = time.time()
@@ -54,7 +54,6 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
             t = time.time()
             model.train()
             embedding = F.normalize(embedding.to(device), p=2, dim=1)
-            embedding = embedding.to(device)
 
             # x = torch.tensor(np.identity(adj.shape[0]), dtype=torch.float).to(device)
             adj = adj.to(device)  # 确保 adj 在 GPU
@@ -90,16 +89,12 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
         print(f"Processing {name}")
         adj_sparse = sp.sparse.load_npz(adj_path)  # 加载压缩稀疏矩阵
         adj = torch.FloatTensor(adj_sparse.toarray()).to(device) # 转换为密集矩阵
-        edge_index = sparse_adj_to_edge_index(adj_sparse, device=device, self_loops=True)  # 一步完成转换+自环
-        # adj = pickle_read(adj_path)
-        # adj = torch.FloatTensor(adj).to(device)
-        # edge_index = RevisedGAE.preprocess_adj(adj, device)
+        #embedding = np.load(vec_path)
+        #embeddings_tensor = torch.tensor(embedding, dtype=torch.float32).to(device)
 
-        # 输入特征（单位矩阵）
-        # x = torch.eye(edge_index.shape[0]).float().to(device)
+        # model = optimitzedGAE(adj.shape[0]).to(device)
+        model = RevisedGAE(adj.shape[0]).to(device)
 
-        # model = GAE(adj.shape[0], 48).to(device)
-        model = optimitzedGAE(adj.shape[0]).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
         t_total = time.time()
@@ -108,7 +103,9 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
         bad_counter = 0
 
         for epoch in range(1000):
+            # loss = train_vec(epoch, adj, embeddings_tensor)
             loss = train(epoch, adj)
+
 
             # 更新最佳结果逻辑
             if loss < best_loss:
@@ -148,7 +145,8 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
             # Realworld 路径构造
             adj_path = os.path.join(ADJ_PATH, f"{network}_adj.npz")
             embedding_path = os.path.join(EMBEDDING_PATH, f"{network}_embedding.npy")
-            entries.append((network, adj_path, embedding_path))
+            vec_path  = os.path.join(VEC_PATH, f"{network}_vec.npy")
+            entries.append((network, adj_path, vec_path, embedding_path))
         else:
             # 合成数据集路径构造
             base_dir = f"{network_type}_graph"
@@ -156,10 +154,11 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, network_params):
                 name = f"{network}_{id}"
                 adj_path = os.path.join(ADJ_PATH, base_dir, network, f"{name}_adj.npz")
                 embedding_path = os.path.join(EMBEDDING_PATH, base_dir, network, f"{name}_embedding.npy")
-                entries.append((name, adj_path, embedding_path))
+                vec_path = os.path.join(VEC_PATH, base_dir, network, f"{name}_vec.npy")
+                entries.append((name, adj_path, vec_path, embedding_path))
 
-        for name, adj_path, embedding_path in entries:
-            GetEmbedding(name, adj_path, embedding_path)
+        for name, adj_path, vec_path, embedding_path in entries:
+            GetEmbedding(name, adj_path, vec_path, embedding_path)
 
 
 if __name__ == '__main__':
@@ -170,7 +169,9 @@ if __name__ == '__main__':
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
     TEST_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'test')
     REALWORLD_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'realworld')
-
+    TRAIN_VEC_PATH = os.path.join(os.getcwd(), 'data', 'vec', 'train')
+    TEST_VEC_PATH = os.path.join(os.getcwd(), 'data', 'vec', 'test')
+    REALWORLD_VEC_PATH = os.path.join(os.getcwd(), 'data', 'vec', 'realworld')
     # Training setup
     random.seed(17)
     np.random.seed(17)
@@ -186,7 +187,7 @@ if __name__ == '__main__':
     with open("Network_Parameters_realworld.json", "r") as f:
         realworld_network_params = json.load(f)
 
-    GenerateEmbedding(TRAIN_EMBEDDING_PATH, TRAIN_ADJ_PATH, train_network_params)
-    GenerateEmbedding(TEST_EMBEDDING_PATH, TEST_ADJ_PATH, test_network_params)
-    GenerateEmbedding(REALWORLD_EMBEDDING_PATH, REALWORLD_ADJ_PATH, realworld_network_params)
+    GenerateEmbedding(TRAIN_EMBEDDING_PATH, TRAIN_ADJ_PATH, TRAIN_VEC_PATH, train_network_params)
+    GenerateEmbedding(TEST_EMBEDDING_PATH, TEST_ADJ_PATH, TEST_VEC_PATH, test_network_params)
+    GenerateEmbedding(REALWORLD_EMBEDDING_PATH, REALWORLD_ADJ_PATH, REALWORLD_VEC_PATH, realworld_network_params)
 

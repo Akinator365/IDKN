@@ -208,6 +208,9 @@ if __name__ == '__main__':
     print(f"Using device: {device}")
 
     # 加载模型检查点
+    # best = 257
+    # checkpoint_path = f"./training/IDKN/2025-03-21_11-00-22/checkpoint_{best}_epoch.pkl"
+
     best = 241
     checkpoint_path = f"./training/IDKN/2025-03-22_11-05-13/checkpoint_{best}_epoch.pkl"
 
