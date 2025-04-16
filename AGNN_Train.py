@@ -13,7 +13,7 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import dense_to_sparse, to_dense_adj
 
-from Model import CGNN, CGNN_New
+from Model import CGNN_New
 from Utils import pickle_read, get_logger, sparse_adj_to_edge_index
 
 # DEFAULT_EPS = 1e-10

@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from scipy.stats import kendalltau, rankdata
 
 from AGNN_Train import load_model
-from Model import CGNN, CGNN_New
+from Model import CGNN_New
 from Utils import sparse_adj_to_edge_index
 
 
@@ -211,8 +211,8 @@ if __name__ == '__main__':
     # best = 257
     # checkpoint_path = f"./training/IDKN/2025-03-21_11-00-22/checkpoint_{best}_epoch.pkl"
 
-    best = 241
-    checkpoint_path = f"./training/IDKN/2025-03-22_11-05-13/checkpoint_{best}_epoch.pkl"
+    best = 300
+    checkpoint_path = f"./training/IDKN/2025-04-15_23-29-51/checkpoint_{best}_epoch.pkl"
 
     # 加载模型和参数
     model = load_model(checkpoint_path, CGNN_New, device).eval()

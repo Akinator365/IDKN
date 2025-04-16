@@ -10,7 +10,7 @@ from torch.nn.functional import embedding
 from torch_geometric.graphgym import optim
 from torch_geometric.utils import dense_to_sparse
 import torch.nn.functional as F
-from Model import GAE, RevisedGAE, optimitzedGAE
+from Model import TraditionalGAE, RevisedGAE, optimitzedGAE
 from Utils import pickle_read, normalize_adj_1, sparse_adj_to_edge_index
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -82,6 +82,36 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
 
                   'time: {}s'.format(time.time() - t))
             return loss_train.data.item()
+
+        def train_traditional(epoch, adj):
+            model.train()
+            adj = adj.to(device)
+
+            # 前向传播获取嵌入
+            z = model(adj)
+
+            # 计算内积重构邻接矩阵
+            adj_recon = torch.sigmoid(z @ z.T)  # [N, N]
+
+            # 计算二元交叉熵损失
+            pos_weight = (adj.numel() - adj.sum()) / adj.sum()  # 处理类别不平衡
+            loss = F.binary_cross_entropy_with_logits(z @ z.T, adj, pos_weight=pos_weight)
+
+            # 反向传播
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            # 验证损失（可选）
+            model.eval()
+            with torch.no_grad():
+                z_val = model(adj)
+                adj_recon_val = torch.sigmoid(z_val @ z_val.T)
+                loss_val = F.binary_cross_entropy_with_logits(z_val @ z_val.T, adj)
+
+            print(f'Epoch: {epoch + 1:04d} | Loss: {loss.item():.4f} | Val Loss: {loss_val.item():.4f}')
+            return loss.item()
+
         if os.path.exists(embedding_path):
             print(f"File {embedding_path} already exists, skipping...")
             return
@@ -89,11 +119,12 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
         print(f"Processing {name}")
         adj_sparse = sp.sparse.load_npz(adj_path)  # 加载压缩稀疏矩阵
         adj = torch.FloatTensor(adj_sparse.toarray()).to(device) # 转换为密集矩阵
-        #embedding = np.load(vec_path)
-        #embeddings_tensor = torch.tensor(embedding, dtype=torch.float32).to(device)
+        embedding = np.load(vec_path)
+        embeddings_tensor = torch.tensor(embedding, dtype=torch.float32).to(device)
 
         # model = optimitzedGAE(adj.shape[0]).to(device)
         model = RevisedGAE(adj.shape[0]).to(device)
+        # model = TraditionalGAE(adj.shape[0]).to(device)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
@@ -103,8 +134,9 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
         bad_counter = 0
 
         for epoch in range(1000):
-            # loss = train_vec(epoch, adj, embeddings_tensor)
-            loss = train(epoch, adj)
+            # loss = train_traditional(epoch, adj)
+            loss = train_vec(epoch, adj, embeddings_tensor)
+            # loss = train(epoch, adj)
 
 
             # 更新最佳结果逻辑
@@ -112,6 +144,7 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
                 print(f"New best loss: {loss:.4f} (improved from {best_loss:.4f})")
                 best_loss = loss
                 with torch.no_grad():
+                    # ，_
                     node_features, _ = model(
                         adj
                     )
@@ -169,9 +202,9 @@ if __name__ == '__main__':
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
     TEST_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'test')
     REALWORLD_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'realworld')
-    TRAIN_VEC_PATH = os.path.join(os.getcwd(), 'data', 'vec', 'train')
-    TEST_VEC_PATH = os.path.join(os.getcwd(), 'data', 'vec', 'test')
-    REALWORLD_VEC_PATH = os.path.join(os.getcwd(), 'data', 'vec', 'realworld')
+    TRAIN_VEC_PATH = os.path.join(os.getcwd(), 'data','struct', 'vec', 'train')
+    TEST_VEC_PATH = os.path.join(os.getcwd(), 'data','struct', 'vec', 'test')
+    REALWORLD_VEC_PATH = os.path.join(os.getcwd(), 'data','struct', 'vec', 'realworld')
     # Training setup
     random.seed(17)
     np.random.seed(17)
@@ -181,7 +214,7 @@ if __name__ == '__main__':
     with open("Network_Parameters_small.json", "r") as f:
         train_network_params = json.load(f)
 
-    with open("Network_Parameters_test.json", "r") as f:
+    with open("Network_Parameters_test_middle.json", "r") as f:
         test_network_params = json.load(f)
 
     with open("Network_Parameters_realworld.json", "r") as f:

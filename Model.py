@@ -203,57 +203,29 @@ class IDKN_Attention(nn.Module):
         ranking_scores = torch.add(local_score, global_score)
         return ranking_scores
 
+# 传统GAE
+class TraditionalGAE(nn.Module):
+    def __init__(self, num_nodes):
+        super().__init__()
+        self.num_nodes = num_nodes
 
-class GNN(torch.nn.Module):
-    def __init__(self, input_feature, output_feature):
-        super(GNN, self).__init__()
-        self.w = nn.Parameter(torch.empty(size=(input_feature, output_feature)))
-        self.a = nn.Parameter(torch.empty(size=(1, output_feature)))
-        self.sigmod = torch.nn.Sigmoid()
-        self.reset_parameters()
+        # 编码器（保留原结构）
+        self.conv1 = GCNConv(num_nodes, 512)
+        self.conv2 = GCNConv(512, 128)  # 直接输出嵌入维度
 
-    def reset_parameters(self):
-        # nn.init.xavier_uniform_(self.w.data,gain=1.414)
-        # nn.init.xavier_uniform_(self.a.data,gain=1.414)
-        for param in self.parameters():
-            nn.init.xavier_uniform_(param)
+        self.register_buffer('x', torch.eye(num_nodes))
 
-    def forward(self, x, adj):
-        # adj=torch.Tensor(adj.numpy()+np.identity(adj.shape[0]))
-        # 因为已经归一化，所以不需要再加单位矩阵
-        # adj = torch.FloatTensor(normalize_adj(sp.csr_matrix(adj) + sp.eye(adj.shape[0])).todense())
-        x = torch.mm(adj, x)
-        x = torch.mm(x, self.w)
-        # x=x.add(self.a)
-        x = torch.relu(x)
-        return x
+    def forward(self, adj):
+        x = self.x
+        edge_index, _ = dense_to_sparse(adj)
+        edge_index, _ = add_self_loops(edge_index)
 
+        # 编码器
+        x = F.relu(self.conv1(x, edge_index))
+        z = F.relu(self.conv2(x, edge_index))  # 输出嵌入 [N, embed_dim]
+        return z  # 仅返回嵌入
 
-class GAE(nn.Module):  # 编码器
-    def __init__(self, n_total_features, n_latent, p_drop=0.):
-        super(GAE, self).__init__()
-        self.n_total_features = n_total_features
-        self.conv1 = GNN(self.n_total_features, 256)
-
-        self.conv2 = GNN(128, 24)
-
-        self.conv3 = GNN(256, n_latent)
-        self.conv4 = GNN(n_latent, self.n_total_features)
-        self.fc1 = torch.nn.Linear(n_latent, 256)
-        self.fc2 = torch.nn.Linear(256, 1)
-
-    def forward(self, x, adj):  # 实践中一般采取多层的GCN来编码
-
-        x = self.conv1(x, adj)
-        # x = self.conv2(x, adj)
-        x = self.conv3(x, adj)  # 经过三层GCN后得到节点的表示
-        # TODO: 线性层是否需要激活函数
-        A = self.fc1(x)  # 直接算点积
-        A = self.fc2(A)
-        # A = torch.sigmoid(A)
-        return x, A
-
-
+# 适用于重构一维特征（如度值）的GAE
 class RevisedGAE(nn.Module):
     def __init__(self, num_nodes):
         super().__init__()
@@ -293,7 +265,7 @@ class RevisedGAE(nn.Module):
         A = self.fc2(A)
         return x, A
 
-
+# 适用于重构多维特征的（node2vec、struct2vec）GAE
 class optimitzedGAE(nn.Module):
     def __init__(self, num_nodes):
         super().__init__()
@@ -381,61 +353,6 @@ class EnhancedGAE(nn.Module):
         degree_pred = self.degree_predictor(z)
 
         return z, adj_recon, degree_pred.squeeze()
-
-
-class CNNnet(torch.nn.Module):
-    def __init__(self):
-        super(CNNnet, self).__init__()
-        self.conv1 = torch.nn.Sequential(
-            torch.nn.Conv2d(in_channels=1,
-                            out_channels=10,
-                            kernel_size=(3, 3),
-                            stride=1,
-                            padding=1),
-
-            torch.nn.LeakyReLU(),
-            torch.nn.MaxPool2d(kernel_size=(2, 2))
-
-        )
-        self.conv2 = torch.nn.Sequential(
-            torch.nn.Conv2d(in_channels=10,
-                            out_channels=20,
-                            kernel_size=(3, 3),
-                            stride=1,
-                            padding=1),
-
-            torch.nn.LeakyReLU(),
-            torch.nn.MaxPool2d(kernel_size=(2, 2))
-
-        )
-        self.fc = torch.nn.Linear(980, 6)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.fc(x.view(x.size(0), -1))
-        return x
-
-
-class CGNN(torch.nn.Module):
-    def __init__(self):
-        super(CGNN, self).__init__()
-        self.layer1 = CNNnet()
-        self.layer2 = GNN(48, 6)
-        self.layer3 = GNN(6, 12)
-        self.fc = torch.nn.Linear(12, 1)
-
-    def forward(self, x, adj):
-        # x=self.layer1(x)
-        x = self.layer2(x, adj)
-        x = self.layer3(x, adj)
-        # x=self.layer4(x,adj)
-
-        x = self.fc(x.view(x.size(0), -1))
-        x = torch.relu(x)
-        x = x.flatten()
-
-        return x
 
 
 class CGNN_New(torch.nn.Module):
