@@ -283,7 +283,6 @@ class optimitzedGAE(nn.Module):
         # self.fc2 = nn.Linear(512, 256)
         # self.fc3 = nn.Linear(256, 128)
 
-
         self.register_buffer('x', torch.eye(num_nodes))  # 注册为缓冲区
 
     def forward(self, adj):
@@ -318,6 +317,109 @@ class optimitzedGAE(nn.Module):
         # A = self.fc3(A)
 
         return x, F.normalize(A, p=2, dim=1)
+
+# 适用于重构多维特征的（node2vec、struct2vec）GAE
+class crazyGAE(nn.Module):
+    def __init__(self, num_nodes):
+        super().__init__()
+        self.num_nodes = num_nodes
+        # 编码器（遵循论文结构）
+        self.conv1 = GCNConv(num_nodes, 512)  # 自动处理自环和归一化
+        self.conv2 = GCNConv(512, 128)  # d/4=64
+        self.res_linear = nn.Linear(512, 128)  # 残差投影层
+        self.dropout = nn.Dropout(0.2)  # 防止过拟合
+
+        # 解码器
+        #self.fc1 = nn.Linear(128, 256)
+        #self.fc2 = nn.Linear(256, 128)
+        self.fc1 = nn.Linear(128, 512)
+        self.fc2 = nn.Linear(512, 128)
+
+        self.register_buffer('x', torch.eye(num_nodes))  # 注册为缓冲区
+
+    def forward(self, adj):
+        x = self.x  # 直接使用缓存的单位矩阵
+        """
+        输入:
+        x: 单位矩阵 (n x n)
+        adj: 原始邻接矩阵 (n x n)
+
+        返回:
+        x: 节点嵌入 (n x d/4)
+        A: 重建的节点度预测 (n x 1)
+        """
+        # 转换邻接矩阵为PyG需要的边索引格式
+        edge_index, _ = dense_to_sparse(adj)
+        edge_index, _ = add_self_loops(edge_index)  # 确保自环存在
+
+        # 编码（每层动态处理A~）
+        x = F.relu(self.conv1(x, edge_index))
+        x = self.dropout(x)
+        x_conv1 = x
+        x = F.relu(self.conv2(x, edge_index))
+
+        # 残差连接（通过投影调整维度）
+        x = x + self.res_linear(x_conv1)  # [N,128] + [N,128]
+
+        # 解码
+        A = self.fc1(x)
+        A = F.relu(A)
+        A = self.fc2(A)
+
+        return x, F.normalize(A, p=2, dim=1)
+
+
+# 适用于重构多维特征的（node2vec、struct2vec）GAE
+class learnableGAE(nn.Module):
+    def __init__(self, num_nodes):
+        super().__init__()
+        self.num_nodes = num_nodes
+        # ==== 可学习的输入特征 + Xavier 初始化 ====
+        self.node_emb = nn.Parameter(torch.empty(num_nodes, 128))  # 先定义空张量
+        nn.init.xavier_normal_(self.node_emb)  # 应用 Xavier 初始化
+
+        # 编码器（遵循论文结构）
+        self.conv1 = GCNConv(128, 512)  # 自动处理自环和归一化
+        self.conv2 = GCNConv(512, 128)  # d/4=64
+        self.res_linear = nn.Linear(512, 128)  # 残差投影层
+        self.dropout = nn.Dropout(0.2)  # 防止过拟合
+
+        # 解码器
+        self.fc1 = nn.Linear(128, 512)
+        self.fc2 = nn.Linear(512, 128)
+
+    def forward(self, adj):
+        """
+        输入:
+        adj: 原始邻接矩阵 (n x n)
+
+        返回:
+        x: 节点嵌入 (n x d/4)
+        A: 重建的节点度预测 (n x 1)
+        """
+        # ==== 可学习的输入特征 ====
+        x = self.node_emb  # [N, input_dim]
+
+        # 转换邻接矩阵为PyG需要的边索引格式
+        edge_index, _ = dense_to_sparse(adj)
+        edge_index, _ = add_self_loops(edge_index)  # 确保自环存在
+
+        # 编码（每层动态处理A~）
+        x = F.relu(self.conv1(x, edge_index))
+        x = self.dropout(x)
+        x_conv1 = x
+        x = F.relu(self.conv2(x, edge_index))
+
+        # 残差连接（通过投影调整维度）
+        x = x + self.res_linear(x_conv1)  # [N,128] + [N,128]
+
+        # 解码
+        A = self.fc1(x)
+        A = F.relu(A)
+        A = self.fc2(A)
+
+        return x, F.normalize(A, p=2, dim=1)
+
 
 class EnhancedGAE(nn.Module):
     def __init__(self, input_dim, latent_dim=48):

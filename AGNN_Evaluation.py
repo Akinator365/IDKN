@@ -211,8 +211,8 @@ if __name__ == '__main__':
     # best = 257
     # checkpoint_path = f"./training/IDKN/2025-03-21_11-00-22/checkpoint_{best}_epoch.pkl"
 
-    best = 300
-    checkpoint_path = f"./training/IDKN/2025-04-15_23-29-51/checkpoint_{best}_epoch.pkl"
+    best = 286
+    checkpoint_path = f"./training/IDKN/2025-04-17_19-52-45/checkpoint_{best}_epoch.pkl"
 
     # 加载模型和参数
     model = load_model(checkpoint_path, CGNN_New, device).eval()
@@ -224,7 +224,7 @@ if __name__ == '__main__':
     # plot_results(test_results, graph_type='BA')
 
     # 评估测试集
-    with open("Network_Parameters_test.json") as f:
+    with open("Network_Parameters_test_middle.json") as f:
         test_params = json.load(f)
     test_results = Evaluation(model, TEST_ADJ_PATH, TEST_LABELS_PATH, TEST_EMBEDDING_PATH, test_params, device)
     plot_results(test_results, graph_type='BA')

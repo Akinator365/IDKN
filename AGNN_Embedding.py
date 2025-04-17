@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import sys
 import time
 
 import numpy as np
@@ -10,13 +11,16 @@ from torch.nn.functional import embedding
 from torch_geometric.graphgym import optim
 from torch_geometric.utils import dense_to_sparse
 import torch.nn.functional as F
-from Model import TraditionalGAE, RevisedGAE, optimitzedGAE
-from Utils import pickle_read, normalize_adj_1, sparse_adj_to_edge_index
+from Model import TraditionalGAE, RevisedGAE, optimitzedGAE, crazyGAE, learnableGAE
+from Utils import pickle_read, normalize_adj_1, sparse_adj_to_edge_index, get_logger
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
+    # ===== 全局统计容器 =====
+    weak_decrease_records = []  # 记录全程下降 <0.1 的任务名称
+
     def GetEmbedding(name, adj_path, vec_path, embedding_path):
         # 定义训练函数在闭包内部以共享模型参数
         def train(epoch, adj):
@@ -123,7 +127,9 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
         embeddings_tensor = torch.tensor(embedding, dtype=torch.float32).to(device)
 
         # model = optimitzedGAE(adj.shape[0]).to(device)
-        model = RevisedGAE(adj.shape[0]).to(device)
+        model = learnableGAE(adj.shape[0]).to(device)
+        #model = crazyGAE(adj.shape[0]).to(device)
+        # model = RevisedGAE(adj.shape[0]).to(device)
         # model = TraditionalGAE(adj.shape[0]).to(device)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
@@ -133,11 +139,19 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
         best_feature = None  # 存储最佳嵌入的变量
         bad_counter = 0
 
+        # ===== 新增：初始化监控变量 =====
+        initial_loss = None
+        final_loss = None
+
         for epoch in range(1000):
             # loss = train_traditional(epoch, adj)
             loss = train_vec(epoch, adj, embeddings_tensor)
             # loss = train(epoch, adj)
 
+            # ===== 记录初始 loss（首个 epoch）=====
+            if epoch == 3:
+                initial_loss = loss
+                print(f"初始 loss: {initial_loss:.4f}")
 
             # 更新最佳结果逻辑
             if loss < best_loss:
@@ -153,10 +167,24 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
             else:
                 bad_counter += 1  # 累计未改进次数
 
-            # 早停判断（连续50次未改进）
-            if bad_counter >= 50:
+            # 早停判断（连续100次未改进）
+            if bad_counter >= 200:
                 print(f"Early stopping: No improvement for {bad_counter} epochs")
+                final_loss = loss  # 记录早停时的 loss
                 break
+
+        # ===== 处理完整训练未早停的情况 =====
+        if final_loss is None:
+            final_loss = loss  # 记录最后一个 epoch 的 loss
+
+        # ===== 计算全程 loss 变化 =====
+        delta_loss = initial_loss - final_loss
+        if delta_loss < 0.2:  # 全程下降值小于阈值
+            IDKN_logger.info(f"[警告] 全程 loss 下降值仅 {delta_loss:.2f}（初始 {initial_loss:.2f} → 最终 {final_loss:.2f}），图：{name}")
+        # ===== 将异常情况记录到全局列表 =====
+        nonlocal weak_decrease_records
+        if delta_loss < 0.2:
+            weak_decrease_records.append(name)
 
         # 训练结束后统一保存
         if best_feature is not None:
@@ -193,6 +221,12 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
         for name, adj_path, vec_path, embedding_path in entries:
             GetEmbedding(name, adj_path, vec_path, embedding_path)
 
+    # ===== 最终输出统计结果 =====
+    IDKN_logger.info("\n===== 全局统计 =====")
+    IDKN_logger.info(f"共有 {len(weak_decrease_records)} 个任务的全程 loss 下降值 <0.1")
+    if len(weak_decrease_records) > 0:
+        IDKN_logger.info("具体任务列表:", weak_decrease_records)
+
 
 if __name__ == '__main__':
 
@@ -205,6 +239,15 @@ if __name__ == '__main__':
     TRAIN_VEC_PATH = os.path.join(os.getcwd(), 'data','struct', 'vec', 'train')
     TEST_VEC_PATH = os.path.join(os.getcwd(), 'data','struct', 'vec', 'test')
     REALWORLD_VEC_PATH = os.path.join(os.getcwd(), 'data','struct', 'vec', 'realworld')
+
+    # 初始化日志记录器
+    # 保证路径存在
+    os.makedirs(TRAIN_EMBEDDING_PATH, exist_ok=True)
+    LOGGING_PATH = os.path.join(TRAIN_EMBEDDING_PATH, 'train.log')
+    # 传入 logger
+    IDKN_logger = get_logger(LOGGING_PATH)
+    # sys.stdout = IDKN_logger  # 让 print() 也写入日志
+
     # Training setup
     random.seed(17)
     np.random.seed(17)
