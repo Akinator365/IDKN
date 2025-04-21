@@ -11,7 +11,7 @@ from torch.nn.functional import embedding
 from torch_geometric.graphgym import optim
 from torch_geometric.utils import dense_to_sparse
 import torch.nn.functional as F
-from Model import TraditionalGAE, RevisedGAE, optimitzedGAE, crazyGAE, learnableGAE
+from Model import TraditionalGAE, RevisedGAE, optimitzedGAE, learnableGAE, resGAE
 from Utils import pickle_read, normalize_adj_1, sparse_adj_to_edge_index, get_logger
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -126,10 +126,11 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
         embedding = np.load(vec_path)
         embeddings_tensor = torch.tensor(embedding, dtype=torch.float32).to(device)
 
-        # model = optimitzedGAE(adj.shape[0]).to(device)
-        model = learnableGAE(adj.shape[0]).to(device)
+        #model = optimitzedGAE(adj.shape[0]).to(device)
+        # model = resGAE(adj.shape[0]).to(device)
+        # model = learnableGAE(adj.shape[0]).to(device)
         #model = crazyGAE(adj.shape[0]).to(device)
-        # model = RevisedGAE(adj.shape[0]).to(device)
+        model = RevisedGAE(adj.shape[0]).to(device)
         # model = TraditionalGAE(adj.shape[0]).to(device)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
@@ -145,8 +146,8 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
 
         for epoch in range(1000):
             # loss = train_traditional(epoch, adj)
-            loss = train_vec(epoch, adj, embeddings_tensor)
-            # loss = train(epoch, adj)
+            # loss = train_vec(epoch, adj, embeddings_tensor)
+            loss = train(epoch, adj)
 
             # ===== 记录初始 loss（首个 epoch）=====
             if epoch == 3:
@@ -168,7 +169,7 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
                 bad_counter += 1  # 累计未改进次数
 
             # 早停判断（连续100次未改进）
-            if bad_counter >= 200:
+            if bad_counter >= 100:
                 print(f"Early stopping: No improvement for {bad_counter} epochs")
                 final_loss = loss  # 记录早停时的 loss
                 break

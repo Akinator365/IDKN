@@ -265,6 +265,7 @@ class RevisedGAE(nn.Module):
         A = self.fc2(A)
         return x, A
 
+
 # 适用于重构多维特征的（node2vec、struct2vec）GAE
 class optimitzedGAE(nn.Module):
     def __init__(self, num_nodes):
@@ -318,8 +319,138 @@ class optimitzedGAE(nn.Module):
 
         return x, F.normalize(A, p=2, dim=1)
 
-# 适用于重构多维特征的（node2vec、struct2vec）GAE
-class crazyGAE(nn.Module):
+
+# 适用于重构一维特征（如度值）的GAE,加入了残差模块
+class resGAE(nn.Module):
+    def __init__(self, num_nodes):
+        super().__init__()
+        self.num_nodes = num_nodes
+        # 编码器（遵循论文结构）
+        self.conv1 = GCNConv(num_nodes, 512)  # 自动处理自环和归一化
+        self.conv2 = GCNConv(512, 128)  # d/4=64
+
+        self.res_linear = nn.Linear(512, 128)  # 残差投影层
+        self.dropout = nn.Dropout(0.2)  # 防止过拟合
+        # 解码器
+        self.fc1 = nn.Linear(128, 256)
+        self.fc2 = nn.Linear(256, 1)
+
+        self.register_buffer('x', torch.eye(num_nodes))  # 注册为缓冲区
+
+    def forward(self, adj):
+        x = self.x  # 直接使用缓存的单位矩阵
+        """
+        输入:
+        x: 单位矩阵 (n x n)
+        adj: 原始邻接矩阵 (n x n)
+
+        返回:
+        x: 节点嵌入 (n x d/4)
+        A: 重建的节点度预测 (n x 1)
+        """
+        # 转换邻接矩阵为PyG需要的边索引格式
+        edge_index, _ = dense_to_sparse(adj)
+        edge_index, _ = add_self_loops(edge_index)  # 确保自环存在
+
+        # 编码（每层动态处理A~）
+        x = F.relu(self.conv1(x, edge_index))
+        x = self.dropout(x)
+        x_conv1 = x
+        x = F.relu(self.conv2(x, edge_index))
+
+        # 残差连接（通过投影调整维度）
+        x = x + self.res_linear(x_conv1)  # [N,128] + [N,128]
+
+        # 解码
+        A = self.fc1(x)
+        A = F.relu(A)
+        A = self.fc2(A)
+
+        return x, A
+
+
+class res_rand_GAE(nn.Module):
+    def __init__(self, num_nodes):
+        super().__init__()
+        self.num_nodes = num_nodes
+
+        # ===== 可学习随机初始化嵌入向量 =====
+        self.node_emb = nn.Parameter(torch.empty(num_nodes, 128))  # 用 nn.Parameter 替代 one-hot
+        nn.init.xavier_uniform_(self.node_emb)  # 可选：xavier_normal_ 也可以
+
+        # 编码器（遵循论文结构）
+        self.conv1 = GCNConv(128, 512)  # 输入维度仍为 num_nodes（如果你希望改小可以一起调整）
+        self.conv2 = GCNConv(512, 128)
+
+        self.res_linear = nn.Linear(512, 128)
+        self.dropout = nn.Dropout(0.2)
+
+        # 解码器
+        self.fc1 = nn.Linear(128, 256)
+        self.fc2 = nn.Linear(256, 1)
+
+    def forward(self, adj):
+        x = self.node_emb  # 使用可学习嵌入
+
+        # 转换邻接矩阵为PyG需要的边索引格式
+        edge_index, _ = dense_to_sparse(adj)
+        edge_index, _ = add_self_loops(edge_index)
+
+        # 编码
+        x = F.relu(self.conv1(x, edge_index))
+        x = self.dropout(x)
+        x_conv1 = x
+        x = F.relu(self.conv2(x, edge_index))
+
+        # 残差连接
+        x = x + self.res_linear(x_conv1)
+
+        # 解码
+        A = self.fc1(x)
+        A = F.relu(A)
+        A = self.fc2(A)
+
+        return x, A
+
+
+class rand_GAE(nn.Module):
+    def __init__(self, num_nodes):
+        super().__init__()
+        self.num_nodes = num_nodes
+
+        # ===== 可学习随机初始化嵌入向量 =====
+        self.node_emb = nn.Parameter(torch.empty(num_nodes, 128))  # 用 nn.Parameter 替代 one-hot
+        nn.init.xavier_uniform_(self.node_emb)  # 可选：xavier_normal_ 也可以
+
+        # 编码器（遵循论文结构）
+        self.conv1 = GCNConv(128, 512)  # 输入维度仍为 num_nodes（如果你希望改小可以一起调整）
+        self.conv2 = GCNConv(512, 128)
+
+        # 解码器
+        self.fc1 = nn.Linear(128, 256)
+        self.fc2 = nn.Linear(256, 1)
+
+    def forward(self, adj):
+        x = self.node_emb  # 使用可学习嵌入
+
+        # 转换邻接矩阵为PyG需要的边索引格式
+        edge_index, _ = dense_to_sparse(adj)
+        edge_index, _ = add_self_loops(edge_index)
+
+        # 编码
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.relu(self.conv2(x, edge_index))
+
+        # 解码
+        A = self.fc1(x)
+        A = F.relu(A)
+        A = self.fc2(A)
+
+        return x, A
+
+
+# 适用于重构多维特征的（node2vec、struct2vec）GAE，加入了残差模块
+class resvecGAE(nn.Module):
     def __init__(self, num_nodes):
         super().__init__()
         self.num_nodes = num_nodes

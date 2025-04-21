@@ -337,8 +337,8 @@ def new_SIR_Multiple(graph_path, labels_path, network_params):
             influence[node] = ave_inf
 
     # 打印每个节点的影响力
-    for node in influence:
-        print(f"Node {node}: Influence {influence[node]:.8f}")
+    #for node in influence:
+    #    print(f"Node {node}: Influence {influence[node]:.8f}")
 
     # 创建并打开文件，写入影响力数据
     txt_filename = labels_path + ".txt"
