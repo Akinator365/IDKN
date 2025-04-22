@@ -506,18 +506,18 @@ class learnableGAE(nn.Module):
         super().__init__()
         self.num_nodes = num_nodes
         # ==== 可学习的输入特征 + Xavier 初始化 ====
-        self.node_emb = nn.Parameter(torch.empty(num_nodes, 128))  # 先定义空张量
+        self.node_emb = nn.Parameter(torch.empty(num_nodes, 256))  # 先定义空张量
         nn.init.xavier_normal_(self.node_emb)  # 应用 Xavier 初始化
 
         # 编码器（遵循论文结构）
-        self.conv1 = GCNConv(128, 512)  # 自动处理自环和归一化
+        self.conv1 = GCNConv(256, 512)  # 自动处理自环和归一化
         self.conv2 = GCNConv(512, 128)  # d/4=64
         self.res_linear = nn.Linear(512, 128)  # 残差投影层
         self.dropout = nn.Dropout(0.2)  # 防止过拟合
 
         # 解码器
-        self.fc1 = nn.Linear(128, 512)
-        self.fc2 = nn.Linear(512, 128)
+        self.fc1 = nn.Linear(128, 256)
+        self.fc2 = nn.Linear(256, 128)
 
     def forward(self, adj):
         """
@@ -550,6 +550,42 @@ class learnableGAE(nn.Module):
         A = self.fc2(A)
 
         return x, F.normalize(A, p=2, dim=1)
+
+
+class structembGAE(nn.Module):
+    def __init__(self, num_nodes, struct2vec_emb):
+        super().__init__()
+        self.num_nodes = num_nodes
+
+        # ==== 核心修改 1：用 struct2vec 嵌入替换单位矩阵 ====
+        # 注册 struct2vec 嵌入为可学习参数
+        self.node_emb = nn.Parameter(struct2vec_emb)
+
+        # ==== 核心修改 2：调整编码器输入维度 ====
+        # 原 GCNConv(num_nodes, 512) → 改为 struct2vec 嵌入维度
+        input_dim = struct2vec_emb.shape[1]  # 自动获取维度（假设 struct2vec_emb 是 [N, D]）
+        self.conv1 = GCNConv(input_dim, 512)
+
+        # 其他层保持不变
+        self.conv2 = GCNConv(512, 128)
+        self.fc1 = nn.Linear(128, 256)
+        self.fc2 = nn.Linear(256, 1)
+
+    def forward(self, adj):
+        # ==== 核心修改 3：使用 struct2vec 嵌入作为输入 ====
+        x = self.node_emb  # [num_nodes, struct2vec_dim]
+
+        # 后续处理保持不变
+        edge_index, _ = dense_to_sparse(adj)
+        edge_index, _ = add_self_loops(edge_index)
+
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.relu(self.conv2(x, edge_index))
+
+        A = self.fc1(x)
+        A = F.relu(A)
+        A = self.fc2(A)
+        return x, A
 
 
 class EnhancedGAE(nn.Module):

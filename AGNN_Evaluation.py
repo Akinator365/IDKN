@@ -210,9 +210,13 @@ if __name__ == '__main__':
     # 加载模型检查点
     # best = 257
     # checkpoint_path = f"./training/IDKN/2025-03-21_11-00-22/checkpoint_{best}_epoch.pkl"
+    # GAE_small
+    # best = 300
+    # checkpoint_path = f"./training/IDKN/2025-04-15_23-29-51/checkpoint_{best}_epoch.pkl"
 
-    best = 207
-    checkpoint_path = f"./training/IDKN/2025-04-21_20-32-14/checkpoint_{best}_epoch.pkl"
+    # new_g0_small
+    best = 307
+    checkpoint_path = f"./training/IDKN/2025-04-22_19-42-34/checkpoint_{best}_epoch.pkl"
 
     # 加载模型和参数
     model = load_model(checkpoint_path, CGNN_New, device).eval()
