@@ -13,7 +13,7 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import dense_to_sparse, to_dense_adj
 
-from Model import CGNN_New
+from Model import CGNN_New, CGNN_GAT
 from Utils import pickle_read, get_logger, sparse_adj_to_edge_index
 
 # DEFAULT_EPS = 1e-10
@@ -147,7 +147,7 @@ if __name__ == '__main__':
     sys.stdout = IDKN_logger  # 让 print() 也写入日志
 
     # 从文件中读取参数
-    with open("Network_Parameters_small.json", "r") as f:
+    with open("Network_Parameters_middle.json", "r") as f:
         network_params = json.load(f)
 
     data_list = []  # 用于存储多个图的数据
@@ -206,6 +206,7 @@ if __name__ == '__main__':
     IDKN_logger.info(f"using device:{device}")
 
     model = CGNN_New().to(device)
+    # model = CGNN_GAT().to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
 
     t_total = time.time()

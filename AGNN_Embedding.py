@@ -11,7 +11,8 @@ from torch.nn.functional import embedding
 from torch_geometric.graphgym import optim
 from torch_geometric.utils import dense_to_sparse
 import torch.nn.functional as F
-from Model import TraditionalGAE, RevisedGAE, optimitzedGAE, learnableGAE, resGAE
+from Model import TraditionalGAE, RevisedGAE, optimitzedGAE, learnableGAE, resGAE, res_rand_GAE, rand_GAE, \
+    struct_start_GAE
 from Utils import pickle_read, normalize_adj_1, sparse_adj_to_edge_index, get_logger
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -126,12 +127,15 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
         embedding = np.load(vec_path)
         embeddings_tensor = torch.tensor(embedding, dtype=torch.float32).to(device)
 
-        #model = optimitzedGAE(adj.shape[0]).to(device)
+        # model = optimitzedGAE(adj.shape[0]).to(device)
         # model = resGAE(adj.shape[0]).to(device)
+        # model = res_rand_GAE(adj.shape[0]).to(device)
+        # model = rand_GAE(adj.shape[0]).to(device)
         # model = learnableGAE(adj.shape[0]).to(device)
         #model = crazyGAE(adj.shape[0]).to(device)
-        model = RevisedGAE(adj.shape[0]).to(device)
+        #model = RevisedGAE(adj.shape[0]).to(device)
         # model = TraditionalGAE(adj.shape[0]).to(device)
+        model = struct_start_GAE(adj.shape[0], embeddings_tensor).to(device)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
@@ -144,7 +148,7 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
         initial_loss = None
         final_loss = None
 
-        for epoch in range(1000):
+        for epoch in range(2000):
             # loss = train_traditional(epoch, adj)
             # loss = train_vec(epoch, adj, embeddings_tensor)
             loss = train(epoch, adj)
@@ -255,10 +259,10 @@ if __name__ == '__main__':
     torch.manual_seed(17)
 
     # 从文件中读取参数
-    with open("Network_Parameters_small.json", "r") as f:
+    with open("Network_Parameters_middle.json", "r") as f:
         train_network_params = json.load(f)
 
-    with open("Network_Parameters_test_middle.json", "r") as f:
+    with open("Network_Parameters_test.json", "r") as f:
         test_network_params = json.load(f)
 
     with open("Network_Parameters_realworld.json", "r") as f:

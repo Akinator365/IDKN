@@ -124,7 +124,7 @@ if __name__ == "__main__":
 
 
     # 从文件中读取参数
-    with open("Network_Parameters.json", "r") as f:
+    with open("Network_Parameters_middle.json", "r") as f:
         train_network_params = json.load(f)
 
     with open("Network_Parameters_test.json", "r") as f:

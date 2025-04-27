@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from scipy.stats import kendalltau, rankdata
 
 from AGNN_Train import load_model
-from Model import CGNN_New
+from Model import CGNN_New, CGNN_GAT
 from Utils import sparse_adj_to_edge_index
 
 
@@ -208,19 +208,16 @@ if __name__ == '__main__':
     print(f"Using device: {device}")
 
     # 加载模型检查点
-    # best = 257
-    # checkpoint_path = f"./training/IDKN/2025-03-21_11-00-22/checkpoint_{best}_epoch.pkl"
-    # GAE_small
-    # best = 300
-    # checkpoint_path = f"./training/IDKN/2025-04-15_23-29-51/checkpoint_{best}_epoch.pkl"
-
-    # new_g0_small
-    best = 307
-    checkpoint_path = f"./training/IDKN/2025-04-22_19-42-34/checkpoint_{best}_epoch.pkl"
+    best = 135
+    checkpoint_path = f"./training/IDKN/2025-04-24_11-06-00/checkpoint_{best}_epoch.pkl"
+    #best = 284
+    #checkpoint_path = f"./training/IDKN/2025-04-22_23-15-48/checkpoint_{best}_epoch.pkl"
+    # best = 292
+    # checkpoint_path = f"./training/IDKN/2025-04-22_19-26-06/checkpoint_{best}_epoch.pkl"
 
     # 加载模型和参数
     model = load_model(checkpoint_path, CGNN_New, device).eval()
-
+    # model = load_model(checkpoint_path, CGNN_GAT, device).eval()
     # # 评估训练集
     # with open("Network_Parameters_small.json") as f:
     #     test_params = json.load(f)
