@@ -1,190 +1,60 @@
-import os
 import random
 import networkx as nx
-import numpy as np
 import time
-from multiprocessing import Pool  # 导入并行计算池
-from scipy.stats import kendalltau
 import json
+import warnings
+from multiprocessing import Pool  # 导入并行计算池
+from tqdm import tqdm
+from functools import partial
 
 from Utils import *
 
-# 计时器
+# --- 计时器 ---
 def start_timer():
     return time.time()
 
 def stop_timer(start_time):
     return time.time() - start_time
 
-# 并行化的 SIR 计算过程
-def parallel_simulation(node, graph, simulations, beta, gamma, step):
-    count = 0
-    for sim in range(simulations):
-        inf = sum(SIR_network(graph, [node], beta, gamma, step))
-        count += inf
-    aveinf = count / simulations
-    return node, aveinf  # 返回节点ID和对应的平均影响力
-
-#SIR
-def update_node_status(graph, node, beta, gamma):
+# --- 传播阈值计算 ---
+def calculate_beta_c(G):
     """
-    更新节点状态
-    :param graph: 网络图
-    :param node: 节点序数
-    :param beta: 感染率
-    :param gamma: 免疫率
+    根据度分布的均场近似 (DBMF) 理论计算流行阈值 beta_c。
+    beta_c = <k> / (<k^2> - <k>)
+
+    :param G: networkx 图对象
+    :return: (beta_c, <k>, <k^2>) 元组，如果分母为0则返回 (None, <k>, <k^2>)
     """
-    # 如果当前节点状态为 感染者(I) 有概率gamma变为 免疫者(R)
-    if graph.nodes[node]['status'] == 'I':
-        p = random.random()
-        if p < gamma:
-            graph.nodes[node]['status'] = 'R'
-    # 如果当前节点状态为 易感染者(S) 有概率beta变为 感染者(I)
-    if graph.nodes[node]['status'] == 'S':
-        # 获取当前节点的邻居节点
-        # 无向图：G.neighbors(node)
-        # 有向图：G.predecessors(node)，前驱邻居节点，即指向该节点的节点；G.successors(node)，后继邻居节点，即该节点指向的节点。
-        neighbors = list(graph.neighbors(node))
-        # 对当前节点的邻居节点进行遍历
-        for neighbor in neighbors:
-            # 邻居节点中存在 感染者(I)，则该节点有概率被感染为 感染者(I)
-            if graph.nodes[neighbor]['status'] == 'I':
-                p = random.random()
-                if p < beta:
-                    graph.nodes[node]['status'] = 'I'
-                    break
 
+    num_nodes = G.number_of_nodes()
+    if num_nodes == 0:
+        print("图为空，无法计算。")
+        return None, 0, 0
 
-def count_node(graph):
-    """
-    计算当前图内各个状态节点的数目
-    :param graph: 输入图
-    :return: 各个状态（S、I、R）的节点数目
-    """
-    s_num, i_num, r_num = 0, 0, 0
-    for node in graph:
-        if graph.nodes[node]['status'] == 'S':
-            s_num += 1
-        elif graph.nodes[node]['status'] == 'I':
-            i_num += 1
-        else:
-            r_num += 1
-    return s_num, i_num, r_num
+    # 1. 获取所有节点的度
+    degrees = [d for n, d in G.degree()]
 
-def SIR_network(graph, source, beta, gamma, step):
-    """
-    获得感染源的节点序列的SIR感染情况
-    :param graph: networkx创建的网络
-    :param source: 需要被设置为感染源的节点Id所构成的序列
-    :param beta: 感染率
-    :param gamma: 免疫率
-    :param step: 迭代次数
-    """
-    n = graph.number_of_nodes()  # 网络节点个数
-    sir_values = []  # 存储每一次迭代后网络中感染节点数I+免疫节点数R的总和
-    # 初始化节点状态
-    for node in graph:
-        graph.nodes[node]['status'] = 'S'  # 将所有节点的状态设置为 易感者（S）
-    # 设置初始感染源
-    for node in source:
-        graph.nodes[node]['status'] = 'I'  # 将感染源序列中的节点设置为感染源，状态设置为 感染者（I）
-    # 记录初始状态
-    sir_values.append(len(source) / n)
-    # 开始迭代感染
-    for s in range(step):
-        # 针对对每个节点进行状态更新以完成本次迭代
-        for node in graph:
-            update_node_status(graph, node, beta, gamma)  # 针对node号节点进行SIR过程
-        s, i, r = count_node(graph)  # 得到本次迭代结束后各个状态（S、I、R）的节点数目
-        sir = (i + r) / n  # 该节点的sir值为迭代结束后 感染节点数i+免疫节点数r
-        sir_values.append(sir)  # 将本次迭代的sir值加入数组
-    return sir_values
+    # 2. 计算 <k> (平均度)
+    k_avg = np.mean(degrees)
 
+    # 3. 计算 <k^2> (度分布的二阶矩)
+    k2_avg = np.mean([d ** 2 for d in degrees])
 
-def SIR_Single(graph, labels_path):
-    print("---- start creating labels ----")
-    simulations = 1000
-    degree = dict(nx.degree(graph))
-    # 平均度为所有节点度之和除以总节点数
-    ave_degree =  sum(degree.values()) / len(graph)
-    # 计算节点的二阶平均度
-    second_order_avg_degree = []
-    for node in graph.nodes():
-        neighbors = list(graph.neighbors(node))
-        second_order_degrees = [graph.degree(neighbor) for neighbor in neighbors]
-        if len(second_order_degrees) > 0:
-            second_order_avg_degree.append(sum(second_order_degrees) / len(second_order_degrees))  # 计算邻居节点的平均度
-    # 计算二阶平均度
-    second_order_avg_degree = sum(second_order_avg_degree) / len(second_order_avg_degree)
-    beta = ave_degree / second_order_avg_degree # 感染率
-    gamma = 0.1  # 免疫率
-    step = 20  # 迭代次数
-    influence = list()
-    for i in graph.nodes:
-        print(f"Node {i}")
-        count = 0
-        for sim in range(simulations):
-            inf = sum(SIR_network(graph,[i], beta, gamma, step))
-            count += inf
-        aveinf = count / simulations
-        influence.append(aveinf)
-    # print(graph.nodes)
-    print(influence)
+    # 4. 计算分母 (<k^2> - <k>)
+    denominator = k2_avg - k_avg
 
-    for idx, node in enumerate(graph.nodes):
-        print(f"Node {node}: Influence {influence[idx]}")
+    if denominator == 0:
+        # 这种情况很少见，但可能发生在所有节点度都为1的图上
+        warnings.warn(f"计算 beta_c 失败：分母 (<k^2> - <k>) 为 0。 (k_avg={k_avg}, k2_avg={k2_avg})")
+        return None, k_avg, k2_avg
 
-    # 创建并打开文件，写入影响力数据
-    txt_filename = labels_path + ".txt"
+    # 5. 计算 beta_c
+    beta_c = k_avg / denominator
 
-    with open(txt_filename, "w") as f:
-        for node in graph.nodes:
-            f.write(f"{node}\t{influence[node]}\n")
+    return beta_c, k_avg, k2_avg
 
-    print(f"Influence values saved to {txt_filename}")
-    print("---- end creating labels ----")
+# --- 模拟核心步骤 (SIR 和 IC) ---
 
-
-def SIR_Multiple(graph, label_path):
-    print("---- start creating labels ----")
-    simulations = 1000
-    degree = dict(nx.degree(graph))
-    ave_degree = sum(degree.values()) / len(graph)
-    second_order_avg_degree = []
-    for node in graph.nodes():
-        neighbors = list(graph.neighbors(node))
-        second_order_degrees = [graph.degree(neighbor) for neighbor in neighbors]
-        if len(second_order_degrees) > 0:
-            second_order_avg_degree.append(sum(second_order_degrees) / len(second_order_degrees))
-    second_order_avg_degree = sum(second_order_avg_degree) / len(second_order_avg_degree)
-    beta = ave_degree / second_order_avg_degree
-    gamma = 0.1
-    step = 20
-
-    # 使用 multiprocessing Pool 来并行计算每个节点的影响力
-    # Pool(processes=num_threads) 可指定并发线程数量
-    with Pool() as pool:
-        results = pool.starmap(parallel_simulation, [(i, graph, simulations, beta, gamma, step) for i in graph.nodes])
-
-    # 将影响力存储在字典中
-    influence = {}
-    for node, aveinf in results:
-        influence[node] = aveinf
-
-    #for node in graph.nodes:
-    #    print(f"Node {node}: Influence {influence[node]}")
-
-    # 创建并打开文件，写入影响力数据
-    txt_filename = label_path + ".txt"
-
-    with open(txt_filename, "w") as f:
-        for node in graph.nodes:
-            f.write(f"{node}\t{influence[node]}\n")
-
-    print(f"Influence values saved to {txt_filename}")
-    print("---- end creating labels ----")
-
-# SIR模型模拟
 def sir_step(S, I, R, adj_list, beta, gamma):
     new_infected = set()
     new_recovered = set()
@@ -223,11 +93,17 @@ def ic_step(S, I, R, adj_list, beta):
 
     return S, I, R
 
-def simulate_node(node, adj_list, n, beta, gamma, simulations):
+# --- 核心工作函数 (被 Single 和 Multiple 共享) ---
+
+def simulate_node(node, adj_list, beta, gamma, simulations):
+    """
+    对单个起始节点进行多次模拟（IC 或 SIR）
+    """
     count = 0
     n = len(adj_list)
     nodes = adj_list.keys()  # 获取所有实际节点
-    for sim in range(simulations):
+
+    for _ in range(simulations):
         # 初始化SIR状态
         S = set(nodes)  # 易感者
         I = {node}  # 选择种子节点作为感染者
@@ -237,101 +113,125 @@ def simulate_node(node, adj_list, n, beta, gamma, simulations):
         S.remove(node)  # 将种子节点从易感者集合中移除
 
         # 进行模拟
-        while len(I) > 0:
-            #S, I, R = sir_step(S, I, R, adj_list, beta, gamma)
-            S, I, R = ic_step(S, I, R, adj_list, beta)
-        inf = (len(I) + len(R)) / n
+        # 复制 I 集合用于迭代，避免在循环中修改
+        current_I = I
+
+        # --- 关键逻辑：根据 gamma 决定模型 ---
+        if gamma == 1.0:
+            while len(current_I) > 0:
+                S, current_I, R = ic_step(S, current_I, R, adj_list, beta)
+        else:
+            while len(current_I) > 0:
+                S, current_I, R = sir_step(S, current_I, R, adj_list, beta, gamma)
+
+        # 循环结束时, I 集合为空，最终分数是 R 集合的大小
+        inf = len(R) / n
         count += inf
+
     ave_inf = count / simulations
     return node, ave_inf  # 返回节点和它的影响力
 
-def new_SIR(graph_path, labels_path):
-    print("---- start creating labels ----")
+# --- 单进程模拟函数 ---
+
+def SIR_Single(graph_path, labels_path, network_params):
+    """
+    (单进程) 计算所有节点的影响力。
+    功能与 SIR_Multiple 一致，用于调试。
+    """
+    print("---- start creating labels (SIR_Single) ----")
+
     adj_list = read_edges(graph_path)
-    # 初始化网络参数
-    n = len(adj_list)  # 节点数
-    beta = 0.3  # 传播率
-    gamma = 0.1  # 恢复率
-    steps = 5  # 模拟的时间步数
-    simulations = 1000 # 模拟次数
-    # 使用字典存储每个节点的影响力
+    graph = nx.read_edgelist(graph_path, nodetype=int)
+    node_list = sorted(list(graph.nodes()))  # 排序以保证处理顺序
+
+    n = len(node_list)
+    if n == 0:
+        print(f"图 {graph_path} 为空，跳过。")
+        return
+
+    # 从参数文件加载参数
+    beta = network_params['beta']
+    gamma = network_params['gamma']
+    simulations = network_params['simulations']
+
+    # --- 计算并打印理论阈值 ---
+    beta_c, k_avg, k2_avg = calculate_beta_c(graph)
+    print(f"  [Info] 理论阈值 beta_c: {beta_c:.6f} (<k>={k_avg:.4f}, <k^2>={k2_avg:.4f})")
+    print(f"  [Info] 正在使用文件中的 Beta: {beta:.6f} | Gamma: {gamma}")
+    if gamma == 1.0:
+        print("  [Info] Gamma=1.0, 运行 IC 模型。")
+    else:
+        print(f"  [Info] Gamma={gamma}, 运行 SIR 模型。")
+    # ---
+
     influence = {}
 
-    # 遍历adj_list的每个节点
-    for node in adj_list:
-        print(f"Node {node}")
-        count = 0
-        for sim in range(simulations):
-            # 初始化SIR状态
-            S = set(range(n))  # 易感者
-            I = {node}  # 随机选择一个感染者
-            R = set()  # 康复者
-            # 进行模拟
-            #history = []
-            for t in range(steps):
-                S, I, R = sir_step(S, I, R, adj_list, beta, gamma)
-                #history.append((len(S), len(I), len(R)))
-            inf = (len(I) + len(R)) / n
-            count += inf
-        aveinf = count / simulations
-        influence[node] = aveinf  # 使用字典存储影响力
+    print(f"  [Info] 使用单进程开始串行计算...")
 
-    # 打印每个节点的影响力
-    for node in influence:
-        print(f"Node {node}: Influence {influence[node]:.4f}")
+    # --- 核心区别：使用 For 循环代替 Pool ---
+    for i, node in enumerate(node_list):
+        if (i + 1) % 10 == 0 or i == 0:  # 打印进度
+            print(f"    Processing node {node} ({i + 1}/{n})...")
+
+        # 调用与 Multiple 完全相同的核心工作函数
+        node_id, ave_inf = simulate_node(node, adj_list, beta, gamma, simulations)
+        influence[node_id] = ave_inf
+    # --- 循环结束 ---
+
+    print("  [Info] ...单进程计算完成。")
 
     # 创建并打开文件，写入影响力数据
     txt_filename = labels_path + ".txt"
-
     with open(txt_filename, "w") as f:
-        for node in adj_list:
-            f.write(f"{node}\t{influence[node]}\n")
+        for node in influence:
+            f.write(f"{node}\t{influence[node]:.8f}\n")
 
     print(f"Influence values saved to {txt_filename}")
     print("---- end creating labels ----")
 
 
-def new_SIR_Multiple(graph_path, labels_path, network_params):
-    print("---- start creating labels ----")
+def SIR_Multiple(graph_path, labels_path, network_params):
+    """
+    (多进程) 并行计算所有节点的影响力
+    """
+    print("---- start creating labels (SIR_Multiple) ----")
 
     adj_list = read_edges(graph_path)
     graph = nx.read_edgelist(graph_path)
     node_list = list(graph.nodes())
     # 使用 numpy 的 array 函数和 astype 方法将元素转换为整数
     int_node_list = np.array(node_list).astype(int)
+
     # 初始化网络参数
-    n = len(node_list)  # 节点数
     beta = network_params['beta']
     gamma = network_params['gamma']
     simulations = network_params['simulations']
 
-    degree = dict(nx.degree(graph))
-    # 平均度为所有节点度之和除以总节点数
-    ave_degree =  sum(degree.values()) / len(graph)
-    # 计算节点的二阶平均度
-    second_order_avg_degree = []
-    for node in graph.nodes():
-        neighbors = list(graph.neighbors(node))
-        second_order_degrees = [graph.degree(neighbor) for neighbor in neighbors]
-        if len(second_order_degrees) > 0:
-            second_order_avg_degree.append(sum(second_order_degrees) / len(second_order_degrees))  # 计算邻居节点的平均度
-    # 计算二阶平均度
-    second_order_avg_degree = sum(second_order_avg_degree) / len(second_order_avg_degree)
-    beta_1 = ave_degree / second_order_avg_degree # 感染率
-    beta_1 = beta_1 * 1.5
-    print(f"beta: {beta_1}")
+    # 计算传播阈值
+    beta_c_result, k_avg, k2_avg = calculate_beta_c(graph)
+    print(f"  [Info] 模拟次数 simulations: {simulations}")
+    print(f"  [Info] 理论阈值 beta_c: {beta_c_result:.6f} (<k>={k_avg:.4f}, <k^2>={k2_avg:.4f})")
+    print(f"  [Info] 正在使用文件中的 Beta: {beta:.6f} | Gamma: {gamma}")
+    if gamma == 1.0:
+        print("  [Info] Gamma=1.0, 运行 IC 模型。")
+    else:
+        print(f"  [Info] Gamma={gamma}, 运行 SIR 模型。")
 
     # 使用字典存储每个节点的影响力
     influence = {}
 
+    # 建议：使用 Pool() 自动适配核心数，或 Pool(os.cpu_count() - 2)
+    num_processes = 6  # (您设置的固定值)
+
+    print(f"  [Info] 使用 {num_processes} 个进程开始并行计算...")
+
     # 使用 multiprocessing.Pool 并行计算每个节点的影响力
-    with Pool(processes=60) as pool:
+    with Pool(processes=num_processes) as pool:
         # 提交任务给进程池
         results = pool.starmap(
             simulate_node,
-            [(node, adj_list, n, beta, gamma, simulations) for node in int_node_list]
+            [(node, adj_list, beta, gamma, simulations) for node in int_node_list]
         )
-
         # 处理并更新影响力字典
         for node, ave_inf in results:
             influence[node] = ave_inf
@@ -357,8 +257,84 @@ def Conver_to_Array(labels_path):
     #print(labels)
     np.save(labels_path + '.npy', labels)
 
+# --- 优化原有的 SIR_Multiple ---
+def SIR_Multiple_Dynamic(graph_path, labels_path, network_params):
+    """
+    (多进程) ：保持节点并行，使用动态负载均衡 (imap_unordered)
+    """
+    print("---- start creating labels (SIR_Multiple_Dynamic) ----")
+
+    adj_list = read_edges(graph_path)
+    graph = nx.read_edgelist(graph_path)
+    node_list = list(graph.nodes())
+    int_node_list = np.array(node_list).astype(int)
+    n = len(int_node_list)  # <-- 确保 n 被定义
+
+    beta = network_params['beta']
+    gamma = network_params['gamma']
+    simulations = network_params['simulations']
+
+    # ... (打印 beta_c 等信息的代码不变) ...
+    beta_c_result, k_avg, k2_avg = calculate_beta_c(graph)
+    print(f"  [Info] 模拟次数 simulations: {simulations}")
+    print(f"  [Info] 理论阈值 beta_c: {beta_c_result:.6f} (<k>={k_avg:.4f}, <k^2>={k2_avg:.4f})")
+    print(f"  [Info] 正在使用文件中的 Beta: {beta:.6f} | Gamma: {gamma}")
+    if gamma == 1.0:
+        print("  [Info] Gamma=1.0, 运行 IC 模型。")
+    else:
+        print(f"  [Info] Gamma={gamma}, 运行 SIR 模型。")
+
+    influence = {}
+    num_processes = 6  # (您设置的固定值)
+    print(f"  [Info] 使用 {num_processes} 个进程开始并行计算 (动态负载均衡)...")
+
+    with Pool(processes=num_processes) as pool:
+
+        # 1. 使用 partial 创建一个新函数
+        #    我们把所有 *不变* 的参数 (adj_list, beta, etc.) 固定住
+        #    这样, sim_task 变成一个只需要 *一个* 参数 (node) 的新函数
+        sim_task_partial = partial(simulate_node,
+                                   adj_list=adj_list,
+                                   beta=beta,
+                                   gamma=gamma,
+                                   simulations=simulations)
+
+        # 2. 准备任务列表 (现在 *只* 需要变化的 'node' 列表)
+        tasks_node_list = int_node_list
+        n_tasks = len(tasks_node_list)
+
+        # 3. pool.imap_unordered 现在可以正确工作了
+        #    它会迭代 tasks_node_list, 每次取出一个 node
+        #    然后调用 sim_task_partial(node)
+        results_iterator = pool.imap_unordered(
+            sim_task_partial,  # <--- 调用我们的新函数
+            tasks_node_list  # <--- 迭代节点列表
+        )
+
+        # --- 修复结束 ---
+
+        print(f"  [Info] 提交 {n_tasks} 个节点任务到池中...")
+
+        # 4. 收集结果 (这里不需要改变)
+        #    tqdm 会正确地显示进度
+        for (node, ave_inf) in tqdm(results_iterator, total=n_tasks):
+            influence[node] = ave_inf
+
+    print("  [Info] ...动态计算完成。")
+
+    # ... (后续保存文件的代码不变) ...
+    txt_filename = labels_path + ".txt"
+    with open(txt_filename, "w") as f:
+        # 建议保存时也排序，确保 .txt 和 .npy 顺序一致
+        for node in sorted(influence.keys()):
+            f.write(f"{node}\t{influence[node]:.8f}\n")
+    print(f"Influence values saved to {txt_filename}")
+    print("---- end creating labels ----")
 
 def GenerateTrainLabel(DATASET_PATH, LABELS_PATH, network_params):
+    """
+    主协调函数，用于生成标签
+    """
     def GetLabel(graph_path, labels_path, name, params):
         txt_filepath = labels_path + ".txt"
         if os.path.exists(txt_filepath):
@@ -366,11 +342,15 @@ def GenerateTrainLabel(DATASET_PATH, LABELS_PATH, network_params):
             return
 
         print(f"Processing {name}")
-        G = nx.read_edgelist(graph_path)
         start_time = start_timer()
-        # SIR_Single(G, labels_path)
-        # SIR_Multiple(G, labels_path)
-        new_SIR_Multiple(graph_path, labels_path, params)
+        # --- 在这里选择要运行的函数 ---
+        # 0. 运行多进程优化版本 (默认)
+        SIR_Multiple_Dynamic(graph_path, labels_path, params)
+        # 1. 运行多进程版本
+        # SIR_Multiple(graph_path, labels_path, params)
+        # 2. 运行单进程版本 (用于调试)
+        # SIR_Single(graph_path, labels_path, params)
+        # ---
         elapsed_time = stop_timer(start_time)
 
         Conver_to_Array(labels_path)
@@ -379,7 +359,7 @@ def GenerateTrainLabel(DATASET_PATH, LABELS_PATH, network_params):
     for network in network_params:
         params = network_params[network]
         network_type = params['type']
-        print(f'Processing {network} graphs...')
+        print(f'\nProcessing {network} graphs...')
 
         entries = []
         if network_type == 'realworld':
@@ -420,41 +400,3 @@ if __name__ == '__main__':
     GenerateTrainLabel(TRAIN_DATASET_PATH, TRAIN_LABELS_PATH, train_network_params)
     GenerateTrainLabel(TEST_DATASET_PATH, TEST_LABELS_PATH, test_network_params)
     GenerateTrainLabel(REALWORLD_DATASET_PATH, REALWORLD_LABELS_PATH, realworld_network_params)
-
-
-    #network_name = 'DNCEmails'
-    ##network_name = 'karate_club_graph'
-    #graph_path = os.path.join(REALWORLD_DATASET_PATH, network_name + ".txt")
-    #labels_path = os.path.join(REALWORLD_LABELS_PATH, network_name + "_labels")
-    #os.makedirs(os.path.dirname(labels_path), exist_ok=True)
-    #new_SIR_Multiple(graph_path, labels_path)
-    #file_path = os.path.join(REALWORLD_LABELS_PATH, f'{network_name}_labels.txt')
-    #sorted_indexes_file1 = read_and_sort_txt(file_path)
-    #new_SIR_Multiple(graph_path, labels_path)
-    #file_path = os.path.join(REALWORLD_LABELS_PATH, f'{network_name}_labels.txt')
-    #sorted_indexes_file2 = read_and_sort_txt(file_path)
-    ## 计算第一列的肯德尔系数
-    #tau, p_value = kendalltau(sorted_indexes_file1, sorted_indexes_file2)
-
-    ## 输出肯德尔系数和p值
-    #print(f"肯德尔系数: {tau}")
-    #print(f"p值: {p_value}")
-
-    #network_type = 'ER'
-    #network_name = 'ER_1000_0'
-    ##network_name = 'karate_club_graph'
-    #graph_path = os.path.join(TRAIN_DATASET_PATH, network_type + '_graph', network_name + ".txt")
-    #labels_path = os.path.join(REALWORLD_LABELS_PATH, network_name + "_labels")
-    #os.makedirs(os.path.dirname(labels_path), exist_ok=True)
-    #new_SIR_Multiple(graph_path, labels_path)
-    #file_path = os.path.join(REALWORLD_LABELS_PATH, f'{network_name}_labels.txt')
-    #sorted_indexes_file1 = read_and_sort_txt(file_path)
-    #new_SIR_Multiple(graph_path, labels_path)
-    #file_path = os.path.join(REALWORLD_LABELS_PATH, f'{network_name}_labels.txt')
-    #sorted_indexes_file2 = read_and_sort_txt(file_path)
-    ## 计算第一列的肯德尔系数
-    #tau, p_value = kendalltau(sorted_indexes_file1, sorted_indexes_file2)
-
-    ## 输出肯德尔系数和p值
-    #print(f"肯德尔系数: {tau}")
-    #print(f"p值: {p_value}")

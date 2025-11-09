@@ -3,21 +3,21 @@
         "enable": true,
         "type" : "realworld",
         "beta": 0.3,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 5000
     },
     "Bible": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.3,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 5000
     },
     "DNCEmails": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.4,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 5000
     },
 
@@ -25,175 +25,175 @@
         "enable": true,
         "type" : "realworld",
         "beta": 0.3,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 5000
     },
     "Infectious": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.3,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 5000
     },
     "karate_club_graph": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.3,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 10000
     },
     "LastFM": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.3,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 500
     },
     "PPI": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.3,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 5000
     },
     "Cora": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.5,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 10000
     },
     "Moreno_oz": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.1,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 10000
     },
     "Elegans": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.3,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 10000
     },
     "Filmtrust": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.7,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 10000
     },
     "Faa": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.5,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 10000
     },
     "Figeys": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.5,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 10000
     },
     "Stelzl": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.6,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 10000
     },
     "Moreno_names": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.3,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 10000
     },
     "Powergri": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.8,
-        "gamma": 0.15,
+        "gamma": 1.05,
         "simulations": 1000
     },
     "Usairport": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.3,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 5000
     },
     "Twitter": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.4,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 1000
     },
     "Erdos": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.5,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 2000
     },
     "Hamster": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.2,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 3000
     },
     "Jazz": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.1,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 10000
     },
     "Vidal": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.5,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 5000
     },
     "NetScience": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.9,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 3000
     },
     "CA-HepTh": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.5,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 300
     },
     "Email-dnc": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.5,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 5000
     },
     "Email-univ": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.3,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 5000
     },
     "Shanghai-Railways": {
         "enable": true,
         "type" : "realworld",
         "beta": 0.8,
-        "gamma": 0.1,
+        "gamma": 1.0,
         "simulations": 10000
     }
 }
