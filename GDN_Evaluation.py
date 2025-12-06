@@ -1,16 +1,29 @@
 import json
 import os
-
-import networkx as nx
-import numpy as np
 import scipy as sp
+import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from scipy.stats import kendalltau, rankdata
+from torch_geometric.data import Data
 
-from AGNN_Train import load_model
-from Model import CGNN_New, CGNN_GAT
-from Utils import sparse_adj_to_edge_index
+# 引入你的 GDN 模型
+from Model import GDN_SIR_Predictor
+from Utils import sparse_adj_to_edge_index, get_logger
+
+
+def load_model(checkpoint_path, model, device):
+    """
+    加载保存的模型检查点
+    """
+    print(f"Loading checkpoint: {checkpoint_path}")
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # 适配保存时是 {'model_state_dict': ...} 的格式
+    if 'model_state_dict' in checkpoint:
+        model.load_state_dict(checkpoint['model_state_dict'])
+    else:
+        model.load_state_dict(checkpoint)
+    return model
 
 
 def jaccard_similarity(output_rank, true_rank, k=10):
@@ -23,8 +36,12 @@ def jaccard_similarity(output_rank, true_rank, k=10):
 
     return intersection / union if union != 0 else 0.0
 
-def Evaluation(model, ADJ_PATH, LABELS_PATH, EMBEDDING_PATH, network_params, device):
-    """统一评估函数，支持所有数据集类型"""
+
+def Evaluation(model, ADJ_PATH, LABELS_PATH, network_params, device):
+    """
+    GDN 专用评估函数
+    区别：不需要读取 EMBEDDING_PATH，直接构建 Data 对象输入模型
+    """
     results = {}
 
     for network in network_params:
@@ -36,88 +53,85 @@ def Evaluation(model, ADJ_PATH, LABELS_PATH, EMBEDDING_PATH, network_params, dev
         if network_type == 'realworld':
             adj_path = os.path.join(ADJ_PATH, f"{network}_adj.npz")
             label_path = os.path.join(LABELS_PATH, f"{network}_labels.npy")
-            embedding_path = os.path.join(EMBEDDING_PATH, f"{network}_embedding.npy")
-            entries.append((network, adj_path, label_path, embedding_path))
+            entries.append((network, adj_path, label_path))
         else:
             base_dir = f"{network_type}_graph"
             for id in range(params['num']):
                 name = f"{network}_{id}"
                 adj_path = os.path.join(ADJ_PATH, base_dir, network, f"{name}_adj.npz")
                 label_path = os.path.join(LABELS_PATH, base_dir, network, f"{name}_labels.npy")
-                embedding_path = os.path.join(EMBEDDING_PATH, base_dir, network, f"{name}_embedding.npy")
-                entries.append((name, adj_path, label_path, embedding_path))
+                entries.append((name, adj_path, label_path))
 
         # 处理每个条目
-        for name, adj_path, label_path, embedding_path in entries:
-            if not all(os.path.exists(p) for p in [adj_path, label_path, embedding_path]):
+        for name, adj_path, label_path in entries:
+            if not all(os.path.exists(p) for p in [adj_path, label_path]):
                 print(f"Missing files for {name}, skipping...")
                 continue
 
-            # 数据加载
-            adj_sparse = sp.sparse.load_npz(adj_path)  # 加载压缩稀疏矩阵
-            edge_index = sparse_adj_to_edge_index(adj_sparse, device=device) # 转换为边索引
-            # 将稀疏矩阵恢复成networkx的图G
-            # G = nx.from_scipy_sparse_array(adj_sparse, parallel_edges=False)
+            # 1. 数据加载与构建
+            adj_sparse = sp.sparse.load_npz(adj_path)
+            # 转换为 edge_index
+            edge_index = sparse_adj_to_edge_index(adj_sparse, device=device)
 
-            node_feature = torch.FloatTensor(np.load(embedding_path)).to(device)
             label = torch.tensor(np.load(label_path)).float().to(device)
+            num_nodes = label.shape[0]
 
-            # 模型推理
+            # 构建 PyG Data 对象 (GDN 需要 edge_index 和 num_nodes)
+            # 不需要外部 x，模型内部会生成 initial_val
+            data = Data(edge_index=edge_index, num_nodes=num_nodes)
+            data = data.to(device)
+
+            # 2. 模型推理
             with torch.no_grad():
-                output = model(node_feature, edge_index)
+                # GDN forward 只需要 data 对象
+                output = model(data)
 
-            # 计算指标
-            output_np = output.cpu().numpy().flatten()  # 确保输出为一维数组
+            # 3. 计算指标
+            output_np = output.cpu().numpy().flatten()
             label_np = label.cpu().numpy().flatten()
 
-            # 1. 计算Kendall's Tau
-            stat, pval = kendalltau(output.cpu().numpy(), label.cpu().numpy())
+            # --- 指标计算逻辑保持不变 ---
+
+            # (1) Kendall's Tau
+            stat, pval = kendalltau(output_np, label_np)
             log_pval = np.log10(pval) if pval > 0 else -100
 
-            # 2. 计算单调性指数（MI）
-            # 生成排名：分数越高排名越前，使用'dense'处理并列（如[1,1,2]）
+            # (2) 单调性指数 (MI)
             ranks = rankdata(-output_np, method='dense')
-            # 统计每个等级的元素数量
             unique, counts = np.unique(ranks, return_counts=True)
-            sum_n_alpha = np.sum(counts * (counts - 1))  # Σ[N_α*(N_α-1)]
+            sum_n_alpha = np.sum(counts * (counts - 1))
             N = len(output_np)
-            # 计算MI（处理N<=1的边界情况）
             if N <= 1:
                 mi = 1.0
             else:
                 mi = (1 - sum_n_alpha / (N * (N - 1))) ** 2
 
-            # 3. 计算杰卡德相似度（前10%、20%、30%、40%、50%）
+            # (3) Jaccard 相似度
             percentages = [0.1, 0.2, 0.3, 0.4, 0.5]
             jaccard_scores = []
-
             for p in percentages:
-                # 计算前k个元素数量（至少1个）
                 k = max(1, int(N * p))
-
-                # 计算杰卡德相似度
                 jaccard = jaccard_similarity(output_np, label_np, k)
-
-                # 存储到数组
-                jaccard_scores.append(jaccard)  # 按顺序存入数组
+                jaccard_scores.append(jaccard)
 
             # 存储结果
             if network not in results:
-                results[network] = {"statistics": [], "pvalues": [], "MI": [], "Jaccard": [] }
+                results[network] = {"statistics": [], "pvalues": [], "MI": [], "Jaccard": []}
             results[network]["statistics"].append(stat)
             results[network]["pvalues"].append(log_pval)
-            results[network]["MI"].append(mi)  # 添加MI值
+            results[network]["MI"].append(mi)
             results[network]["Jaccard"].append(jaccard_scores)
-            print(f"{name} tau:{stat:.4f}")
+
+            print(f"{name} | Tau: {stat:.4f} | MI: {mi:.4f}")
 
     return results
 
+
 def plot_results(results, graph_type='BA'):
-    """统一绘图函数"""
+    """绘图函数 (保持原样)"""
     plt.figure(figsize=(10, 6))
 
     if graph_type == 'BA':
-        # BA图参数化显示
         sizes = ["500", "1000", "2000", "5000"]
         params = [3, 5, 8, 15]
 
@@ -135,11 +149,8 @@ def plot_results(results, graph_type='BA'):
         plt.xticks(params)
 
     elif graph_type == 'realworld':
-        # 表格展示真实网络结果
         networks = sorted(results.keys())
         data = []
-
-        # 准备表格数据
         for net in networks:
             mean_stat = np.nanmean(results[net]["statistics"])
             mean_pval = np.nanmean(results[net]["pvalues"])
@@ -149,42 +160,34 @@ def plot_results(results, graph_type='BA'):
                 f"{10 ** mean_pval:.2e}" if mean_pval > -100 else "N/A"
             ])
 
-        # 创建颜色数组（修复点）
         n_rows = len(data)
         n_cols = 3
         colors = []
-        header_color = '#40466e'  # 深蓝色表头
-        colors.append([header_color] * n_cols)  # 表头颜色
-
-        # 数据行颜色（斑马条纹）
+        header_color = '#40466e'
+        colors.append([header_color] * n_cols)
         for i in range(n_rows - 1):
             color = '#F5F5F5' if i % 2 == 0 else 'white'
             colors.append([color] * n_cols)
 
-        # 创建表格
         columns = ('Network', 'Kendall Tau', 'P-Value')
         table = plt.table(
             cellText=data,
             colLabels=columns,
             cellLoc='center',
             loc='center',
-            cellColours=colors,  # 使用修正后的颜色数组
+            cellColours=colors,
             colWidths=[0.3, 0.3, 0.4],
-            edges='horizontal'  # 只显示水平分割线
+            edges='horizontal'
         )
-
-        # 设置表头样式
         for (i, j), cell in table.get_celld().items():
-            if i == 0:  # 表头行
+            if i == 0:
                 cell.set_text_props(color='white', weight='bold')
                 cell.set_edgecolor('white')
-
-        # 隐藏坐标轴
         plt.axis('off')
         plt.title("Realworld Networks Evaluation Results", pad=20)
 
     plt.ylabel("Average Kendall Tau")
-    plt.title(f"Performance on {graph_type} Graphs")
+    plt.title(f"GDN Performance on {graph_type} Graphs")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -192,14 +195,12 @@ def plot_results(results, graph_type='BA'):
 
 
 if __name__ == '__main__':
-
-    # 初始化路径
+    # 1. 路径配置
+    # 注意：不再需要 EMBEDDING_PATH
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
     TEST_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'test')
     REALWORLD_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'realworld')
-    TRAIN_EMBEDDING_PATH = os.path.join(os.getcwd(), 'data', 'embedding', 'train')
-    TEST_EMBEDDING_PATH = os.path.join(os.getcwd(), 'data', 'embedding', 'test')
-    REALWORLD_EMBEDDING_PATH = os.path.join(os.getcwd(), 'data', 'embedding', 'realworld')
+
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
     TEST_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'test')
     REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
@@ -207,33 +208,44 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
-    # 加载模型检查点
-    best = 312
-    checkpoint_path = f"./training/IDKN/2025-12-06_19-18-23/checkpoint_{best}_epoch.pkl"
-    #best = 284
-    #checkpoint_path = f"./training/IDKN/2025-04-22_23-15-48/checkpoint_{best}_epoch.pkl"
-    # best = 292
-    # checkpoint_path = f"./training/IDKN/2025-04-22_19-26-06/checkpoint_{best}_epoch.pkl"
+    # 2. 模型初始化
+    # 必须与训练时的参数保持一致 (hidden_dim=64)
+    model = GDN_SIR_Predictor(hidden_dim=64).to(device)
 
-    # 加载模型和参数
-    model = load_model(checkpoint_path, CGNN_New, device).eval()
-    # model = load_model(checkpoint_path, CGNN_GAT, device).eval()
-    # # 评估训练集
-    with open("Network_Parameters_small.json") as f:
-        test_params = json.load(f)
-    test_results = Evaluation(model, TRAIN_ADJ_PATH, TRAIN_LABELS_PATH, TRAIN_EMBEDDING_PATH, test_params, device)
-    plot_results(test_results, graph_type='BA')
+    # 3. 加载 Checkpoint
+    # 请替换为你训练生成的具体路径
+    # 例如: "./training/GDN_Direct/2025-12-06_21-30-00/checkpoint_500_epoch.pkl"
+    checkpoint_path = "./training/GDN_Direct/YOUR_DATE_HERE/checkpoint_BEST_epoch.pkl"
 
-    # 评估测试集
-    with open("Network_Parameters_test.json") as f:
-        test_params = json.load(f)
-    test_results = Evaluation(model, TEST_ADJ_PATH, TEST_LABELS_PATH, TEST_EMBEDDING_PATH, test_params, device)
-    plot_results(test_results, graph_type='BA')
+    try:
+        model = load_model(checkpoint_path, model, device).eval()
+        print("Model loaded successfully.")
+    except FileNotFoundError:
+        print(f"Error: Checkpoint file not found at {checkpoint_path}")
+        exit()
 
-    # 评估realworld数据集
-    with open("Network_Parameters_realworld.json") as f:
-        realworld_params = json.load(f)
-    realworld_results = Evaluation(model, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH,
-                                   REALWORLD_EMBEDDING_PATH, realworld_params, device)
-    plot_results(realworld_results, graph_type='realworld')
+    # 4. 执行评估
 
+    # (A) 评估训练集 (BA Small)
+    if os.path.exists("Network_Parameters_small.json"):
+        print("\n--- Evaluating Training Set (Small) ---")
+        with open("Network_Parameters_small.json") as f:
+            train_params = json.load(f)
+        train_results = Evaluation(model, TRAIN_ADJ_PATH, TRAIN_LABELS_PATH, train_params, device)
+        plot_results(train_results, graph_type='BA')
+
+    # (B) 评估测试集 (BA Test)
+    if os.path.exists("Network_Parameters_test.json"):
+        print("\n--- Evaluating Test Set ---")
+        with open("Network_Parameters_test.json") as f:
+            test_params = json.load(f)
+        test_results = Evaluation(model, TEST_ADJ_PATH, TEST_LABELS_PATH, test_params, device)
+        plot_results(test_results, graph_type='BA')
+
+    # (C) 评估真实数据集 (Realworld)
+    if os.path.exists("Network_Parameters_realworld.json"):
+        print("\n--- Evaluating Realworld Networks ---")
+        with open("Network_Parameters_realworld.json") as f:
+            realworld_params = json.load(f)
+        realworld_results = Evaluation(model, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH, realworld_params, device)
+        plot_results(realworld_results, graph_type='realworld')

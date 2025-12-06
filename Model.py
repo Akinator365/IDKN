@@ -5,11 +5,12 @@ from torch_geometric.utils import add_self_loops, degree, dense_to_sparse
 from torch_geometric.datasets import Planetoid
 import torch
 import torch.nn.functional as F
-from torch.nn import Linear
+from torch.nn import Parameter, Linear
 import torch.nn as nn
 from torch_sparse import SparseTensor, matmul, fill_diag, sum, mul
 from torch_geometric.nn import GCNConv
-
+from torch_geometric.nn import MessagePassing
+from torch_geometric.utils import softmax
 from Utils import normalize_adj
 
 
@@ -235,8 +236,8 @@ class RevisedGAE(nn.Module):
         self.conv2 = GCNConv(512, 128)  # d/4=64
 
         # 解码器
-        self.fc1 = nn.Linear(128, 256)
-        self.fc2 = nn.Linear(256, 1)
+        self.fc1 = nn.Linear(128, 512)
+        self.fc2 = nn.Linear(512, 1)
 
         self.register_buffer('x', torch.eye(num_nodes))  # 注册为缓冲区
 
@@ -263,7 +264,148 @@ class RevisedGAE(nn.Module):
         A = self.fc1(x)
         A = F.relu(A)
         A = self.fc2(A)
-        return x, A
+
+        # 修改点 2: 加上 ReLU，确保预测的度值非负
+        return x, F.relu(A)
+
+
+class GDNConv(MessagePassing):
+    def __init__(self, in_channels, out_channels, negative_slope=0.2, bias=True):
+        # 聚合方式依然是 add，因为我们要累加接收到的扩散量
+        super(GDNConv, self).__init__(aggr='add')
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.negative_slope = negative_slope
+
+        # 对应论文 Eq(2): LeakyReLU(W1*h_i + W2*h_j)
+        # linear_src 对应 W1 (源节点变换), linear_dst 对应 W2 (目标节点变换)
+        self.linear_src = Linear(in_channels, out_channels, bias=False)
+        self.linear_dst = Linear(in_channels, out_channels, bias=False)
+
+        # 对应论文 Eq(2) 中的向量 a (虽然论文没显式写出向量a的点积，
+        # 但通常 LeakyReLU 后接一个向量点积来映射为标量 score，
+        # 或者如论文描述直接用 LeakyReLU 输出作为 logits，这里参照标准 GAT 实现加一个 attn 向量)
+        # 如果严格按照论文文字 "LeakyReLU(W1h + W2h)" 作为一个标量，
+        # 意味着 out_channels 应该是 1。但通常为了表达能力，这里隐含了 attention vector。
+        self.attn_vec = Parameter(torch.Tensor(1, out_channels))
+
+        # 对应论文 Eq(4): W3 * m + b3
+        self.lin_update = Linear(in_channels, out_channels, bias=bias)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        gain = nn.init.calculate_gain('relu')
+        nn.init.xavier_normal_(self.linear_src.weight, gain=gain)
+        nn.init.xavier_normal_(self.linear_dst.weight, gain=gain)
+        nn.init.xavier_normal_(self.lin_update.weight, gain=gain)
+        nn.init.xavier_normal_(self.attn_vec, gain=gain)
+
+    def forward(self, x, edge_index):
+        # x: (N, in_channels)
+        # edge_index: (2, E) -> [source_nodes, target_nodes]
+
+        # 1. 保存源节点索引，用于后续的 Softmax 归一化
+        # edge_index[0] 是源节点索引 (j -> i 中的 j)
+        src_index = edge_index[0]
+
+        # 2. 开始消息传递
+        # 我们将 src_index 传递给 propagate，它会被透传给 message 函数
+        out = self.propagate(edge_index, x=x, src_index=src_index)
+
+        # 3. 对应论文 Eq(4): update 步骤
+        # out 已经是聚合后的 m_i
+        out = self.lin_update(out)
+
+        # 4. 激活 (Activation - Eq 4)
+        # 最后进行激活 sigma(.)
+        return F.relu(out)
+
+    def message(self, x_i, x_j, src_index, index, ptr, size_i):
+        # x_j: 源节点特征 (E, out_channels)
+        # x_i: 目标节点特征 (E, out_channels)
+        # src_index: 源节点索引 (E, ) -> 用于 source-wise softmax
+        # index: 目标节点索引 (E, ) -> PyG 默认传进来的，用于 scatter 聚合
+
+        # --- 步骤 A: 计算 Attention Score (对应 Eq 2) ---
+
+        # 变换特征
+        h_src = self.linear_src(x_j)  # W1 * h_source
+        h_dst = self.linear_dst(x_i)  # W2 * h_target
+
+        # 计算系数: LeakyReLU(W1*h_src + W2*h_dst)
+        # 形状: (E, out_channels)
+        feat_sum = h_src + h_dst
+        score = F.leaky_relu(feat_sum, self.negative_slope)
+
+        # 将向量投影为标量: (E, out_channels) * (1, out_channels) -> sum -> (E, )
+        score = (score * self.attn_vec).sum(dim=-1)
+
+        # --- 步骤 B: 计算 Diffusion Weight (对应 Eq 3) ---
+
+        # !!! 关键修改点 !!!
+        # 标准 GAT 使用 softmax(score, index) -> 对指向同一目标节点的边归一化 (In-degree)
+        # GDN 需要 softmax(score, src_index) -> 对来自同一源节点的边归一化 (Out-degree)
+
+        alpha = softmax(score, src_index, ptr, None)  # 这里的 None 代表 num_nodes，通常可以省略
+
+        # alpha 是扩散权重 w_{ij} (或 w_{ji})
+
+        # --- 步骤 C: 消息加权 ---
+        # 源节点特征 x_j 乘以它流向目标的比例 alpha
+        return x_j * alpha.view(-1, 1)
+
+
+# === 端到端预测模型 ===
+class GDN_SIR_Predictor(nn.Module):
+    def __init__(self, hidden_dim=64):
+        super(GDN_SIR_Predictor, self).__init__()
+
+        # 输入策略：
+        # 策略 A: 既然是 SIR 模拟，假设每个节点初始状态一样，用 Embedding 模拟 "1单位能量"
+        # 使用 learnable embedding 比纯 torch.ones 表达能力稍强，
+        # 但如果为了严格模拟 DCRS 论文，可以改回固定全 1 输入。
+        # 这里我使用一个单一的 learnable vector 广播到所有节点，模拟“初始均匀病毒”
+        self.initial_val = nn.Parameter(torch.ones(1, hidden_dim))
+        # GDN 层 (堆叠 4 层以捕获 4-hop 传播)
+        self.gdn1 = GDNConv(hidden_dim, hidden_dim)
+        self.gdn2 = GDNConv(hidden_dim, hidden_dim)
+        self.gdn3 = GDNConv(hidden_dim, hidden_dim)
+        self.gdn4 = GDNConv(hidden_dim, 1)
+
+    def forward(self, data):
+        # 获取输入
+        edge_index = data.edge_index
+
+        # 动态获取当前 batch 的总节点数
+        # PyG 的 DataLoader 会把多个图拼成一个大图，data.num_nodes 是当前 batch 的总节点数
+        if hasattr(data, 'num_nodes') and data.num_nodes is not None:
+            curr_num_nodes = data.num_nodes
+        else:
+            # 如果没有 num_nodes 属性，尝试从 edge_index 推断
+            curr_num_nodes = edge_index.max().item() + 1
+
+        # 1. 构造初始特征 (N, D)
+        # 将 (1, D) 的初始向量扩展为 (Batch_Total_Nodes, D)
+        x = self.initial_val.expand(curr_num_nodes, -1)
+
+        # 2. 添加自环 (Self-loops)
+        # GDN 模拟扩散，必须有自环，否则能量会全部流失给邻居，自己不保留
+        edge_index_loop, _ = add_self_loops(edge_index, num_nodes=curr_num_nodes)
+
+        # 3. 逐层传播 (Layer-wise Propagation)
+        x = F.relu(self.gdn1(x, edge_index_loop))  # Layer 1
+        x = F.relu(self.gdn2(x, edge_index_loop))  # Layer 2
+        x = F.relu(self.gdn3(x, edge_index_loop))  # Layer 3
+
+        # 4. 最终评分
+        # 最后一层输出 (N, 1)
+        score = self.gdn4(x, edge_index_loop)
+
+        # 5. 激活函数
+        # SIR 影响力恒 > 0，使用 ReLU 保证非负
+        return F.relu(score).squeeze(-1)  # 输出 (N, )
 
 
 # 适用于重构多维特征的（node2vec、struct2vec）GAE

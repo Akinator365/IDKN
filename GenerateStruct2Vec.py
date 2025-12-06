@@ -5,7 +5,7 @@ import numpy as np
 import networkx as nx
 
 
-def run_struc2vec(input_path, output_path, dimensions=128, walk_length=30, num_walks=300,
+def run_struc2vec(input_path, output_path, dimensions=128, walk_length=30, num_walks=50,
                   window_size=10, iterations=5, workers=4,
                   directed=False, weighted=False,
                   OPT1=True, OPT2=True, OPT3=True, until_layer=None):
@@ -70,10 +70,10 @@ def GenerateStruct2Vec(STR_PATH, EMB_PATH, DATASET_PATH, network_params):
             output_path=emb_path,
             dimensions=128,
             walk_length=30,
-            num_walks=300,
+            num_walks=50,
             window_size=10,
             iterations=5,
-            workers=16,
+            workers=8,
             directed=False,
             weighted=False,
             OPT1=True,
@@ -124,7 +124,7 @@ if __name__ == "__main__":
 
 
     # 从文件中读取参数
-    with open("Network_Parameters_middle.json", "r") as f:
+    with open("Network_Parameters_small.json", "r") as f:
         train_network_params = json.load(f)
 
     with open("Network_Parameters_test.json", "r") as f:
@@ -134,5 +134,5 @@ if __name__ == "__main__":
         realworld_network_params = json.load(f)
 
     GenerateStruct2Vec(TRAIN_STR_PATH, TRAIN_EMB_PATH, TRAIN_DATASET_PATH, train_network_params)
-    GenerateStruct2Vec(TEST_STR_PATH, TEST_EMB_PATH, TEST_DATASET_PATH, test_network_params)
-    GenerateStruct2Vec(REALWORLD_STR_PATH, REALWORLD_EMB_PATH, REALWORLD_DATASET_PATH, realworld_network_params)
+    # GenerateStruct2Vec(TEST_STR_PATH, TEST_EMB_PATH, TEST_DATASET_PATH, test_network_params)
+    # GenerateStruct2Vec(REALWORLD_STR_PATH, REALWORLD_EMB_PATH, REALWORLD_DATASET_PATH, realworld_network_params)

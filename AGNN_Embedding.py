@@ -54,39 +54,6 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
 
                   'time: {}s'.format(time.time() - t))
             return loss_train.data.item()
-        # 定义训练函数在闭包内部以共享模型参数
-        def train_vec(epoch, adj, embedding):
-            t = time.time()
-            model.train()
-            embedding = F.normalize(embedding.to(device), p=2, dim=1)
-
-            # x = torch.tensor(np.identity(adj.shape[0]), dtype=torch.float).to(device)
-            adj = adj.to(device)  # 确保 adj 在 GPU
-
-            x, A = model(adj)
-
-            # loss_train = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
-            # loss_train = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
-            loss_train = 1 - F.cosine_similarity(A, embedding).mean()  # 平均余弦相似度损失
-
-            optimizer.zero_grad()
-            loss_train.backward()
-            optimizer.step()
-
-            # 计算验证损失 (避免梯度计算)
-            model.eval()
-            with torch.no_grad():
-                x, A = model(adj)
-                # loss_val = torch.norm(A - adj.sum(dim=1).reshape(-1, 1), p='fro').to(device)
-                loss_val = torch.nn.functional.mse_loss(A, adj.sum(dim=1, keepdim=True).to(device))
-
-            print('Epoch: {:04d}'.format(epoch + 1),
-                  'loss_train: {}'.format(loss_train.data.item()),
-
-                  'loss_val: {}'.format(loss_val.data.item()),
-
-                  'time: {}s'.format(time.time() - t))
-            return loss_train.data.item()
 
         def train_traditional(epoch, adj):
             model.train()
@@ -127,15 +94,15 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
         embedding = np.load(vec_path)
         embeddings_tensor = torch.tensor(embedding, dtype=torch.float32).to(device)
 
-        # model = optimitzedGAE(adj.shape[0]).to(device)
+        #model = optimitzedGAE(adj.shape[0]).to(device)
         # model = resGAE(adj.shape[0]).to(device)
         # model = res_rand_GAE(adj.shape[0]).to(device)
         # model = rand_GAE(adj.shape[0]).to(device)
         # model = learnableGAE(adj.shape[0]).to(device)
         #model = crazyGAE(adj.shape[0]).to(device)
-        #model = RevisedGAE(adj.shape[0]).to(device)
+        model = RevisedGAE(adj.shape[0]).to(device)
         # model = TraditionalGAE(adj.shape[0]).to(device)
-        model = struct_start_GAE(adj.shape[0], embeddings_tensor).to(device)
+        #model = struct_start_GAE(adj.shape[0], embeddings_tensor).to(device)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
@@ -150,7 +117,6 @@ def GenerateEmbedding(EMBEDDING_PATH, ADJ_PATH, VEC_PATH, network_params):
 
         for epoch in range(2000):
             # loss = train_traditional(epoch, adj)
-            # loss = train_vec(epoch, adj, embeddings_tensor)
             loss = train(epoch, adj)
 
             # ===== 记录初始 loss（首个 epoch）=====
@@ -259,7 +225,7 @@ if __name__ == '__main__':
     torch.manual_seed(17)
 
     # 从文件中读取参数
-    with open("Network_Parameters_middle.json", "r") as f:
+    with open("Network_Parameters_small.json", "r") as f:
         train_network_params = json.load(f)
 
     with open("Network_Parameters_test.json", "r") as f:
@@ -269,6 +235,6 @@ if __name__ == '__main__':
         realworld_network_params = json.load(f)
 
     GenerateEmbedding(TRAIN_EMBEDDING_PATH, TRAIN_ADJ_PATH, TRAIN_VEC_PATH, train_network_params)
-    GenerateEmbedding(TEST_EMBEDDING_PATH, TEST_ADJ_PATH, TEST_VEC_PATH, test_network_params)
-    GenerateEmbedding(REALWORLD_EMBEDDING_PATH, REALWORLD_ADJ_PATH, REALWORLD_VEC_PATH, realworld_network_params)
+    #GenerateEmbedding(TEST_EMBEDDING_PATH, TEST_ADJ_PATH, TEST_VEC_PATH, test_network_params)
+    #GenerateEmbedding(REALWORLD_EMBEDDING_PATH, REALWORLD_ADJ_PATH, REALWORLD_VEC_PATH, realworld_network_params)
 

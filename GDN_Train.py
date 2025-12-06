@@ -7,13 +7,10 @@ import time
 import scipy as sp
 import numpy as np
 import torch
-from scipy.stats import kendalltau
-from torch_geometric.graphgym import optim
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-from torch_geometric.utils import dense_to_sparse, to_dense_adj
-
-from Model import CGNN_New, CGNN_GAT
+import torch.optim as optim
+from Model import CGNN_New, CGNN_GAT, GDN_SIR_Predictor
 from Utils import pickle_read, get_logger, sparse_adj_to_edge_index
 
 # DEFAULT_EPS = 1e-10
@@ -89,10 +86,12 @@ def listMLE(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VAL
     return listmle
 
 
-def save_model(epoch, path):
-    checkpoint = {"model_state_dict": model.state_dict(),
-                  "optimizer_state_dict": optimizer.state_dict(),
-                  "epoch": epoch}
+def save_model(model, optimizer, epoch, path):
+    checkpoint = {
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "epoch": epoch
+    }
     path_checkpoint = os.path.join(path, "checkpoint_{}_epoch.pkl".format(epoch))
     torch.save(checkpoint, path_checkpoint)
 
@@ -131,10 +130,8 @@ if __name__ == '__main__':
 
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
-    TRAIN_EMBEDDING_PATH = os.path.join(os.getcwd(), 'data', 'embedding', 'train')
     adj_path = TRAIN_ADJ_PATH
     labels_path = TRAIN_LABELS_PATH
-    embedding_path = TRAIN_EMBEDDING_PATH
 
     date = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     CHECKPOINTS_PATH = os.path.join(os.getcwd(), 'training', 'IDKN', date)
@@ -160,44 +157,20 @@ if __name__ == '__main__':
             network_name = f"{network}_{id}"
             single_adj_path = os.path.join(adj_path, network_type + '_graph', network, network_name + '_adj.npz')
             single_labels_path = os.path.join(labels_path, network_type + '_graph', network, network_name + '_labels.npy')
-            single_embedding_path = os.path.join(embedding_path, network_type + '_graph', network, network_name + '_embedding.npy')
-
-            node_feature = np.load(single_embedding_path)
-            # 转换为 PyTorch 张量
-            x = torch.FloatTensor(node_feature)
 
             adj_sparse = sp.sparse.load_npz(single_adj_path)  # 加载压缩稀疏矩阵
-            adj_matrix = torch.FloatTensor(adj_sparse.toarray())  # 转换为密集矩阵
             edge_index = sparse_adj_to_edge_index(adj_sparse) # 转换为边索引
 
-            # adj_matrix = pickle_read(single_adj_path)
-            # adj = torch.FloatTensor(adj_matrix)
             labels = np.load(single_labels_path)
-
-            # adj_matrix 是一个邻接矩阵，我们需要将其转为边索引格式
-            # edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0]  # 转为 edge_index 格式
-
-            # 计算节点数
-            num_nodes = adj_matrix.shape[0] # 根据 adj_matrix 计算节点数：num_nodes = adj_matrix.shape[0]
-
-            # 转换为 PyTorch 张量
-            y = torch.tensor(labels, dtype=torch.float)  # 标签
+            y = torch.tensor(labels, dtype=torch.float)
 
             # 创建 PyTorch Geometric 的 Data 对象
-            data = Data(x=x, edge_index=edge_index, y=y)
-
-            #data = Data(x=x, edge_index=edge_index, num_nodes=num_nodes, adj=adj, y=y)
+            data = Data(edge_index=edge_index, y=y, num_nodes=len(labels))
 
             # 将图数据添加到 data_list 中
             data_list.append(data)
 
-    # 将data_list分为训练集和测试集
-    # 打乱数据
-    np.random.shuffle(data_list)
-    # train_dataset = data_list[:round(len(data_list) * 0.8)]
-    # test_dataset = data_list[round(len(data_list) * 0.8):]
-    train_loader = DataLoader(data_list, batch_size=8, shuffle=True, follow_batch=['x'])
-    # test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    train_loader = DataLoader(data_list, batch_size=8, shuffle=True)
 
     random.seed(17)
     np.random.seed(17)
@@ -205,61 +178,66 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     IDKN_logger.info(f"using device:{device}")
 
-    model = CGNN_New().to(device)
-    # model = CGNN_GAT().to(device)
+    # 初始化模型
+    # num_nodes_max 不是必须的，因为输入特征是广播的，但可以用来设定 hidden_dim
+    model = GDN_SIR_Predictor(hidden_dim=64).to(device)
+
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
+    # 可以加一个 Scheduler
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.5)
 
     t_total = time.time()
-    loss_values = []
+    best_loss = float('inf')
     bad_counter = 0
-    best = float('inf')  # 初始化为正无穷
     best_epoch = 0
+
+    IDKN_logger.info("Start Training GDN Direct Predictor...")
 
     for epoch in range(3000):
         model.train()
         total_loss = 0
-        total_loss_val = 0
-        for data in train_loader:  # Batch training with DataLoader
-            data = data.to(device)  # Move batch to GPU/CPU
-            # 转回稠密邻接矩阵
-            # adj_matrix_reconstructed = to_dense_adj(data.edge_index, max_num_nodes=data.num_nodes).squeeze(0)
 
-            out = model(data.x, data.edge_index)  # Forward pass
-            loss = listMLE(out, data.y) # Compute loss
-            #loss = torch.nn.functional.mse_loss(out, data.y)
-            loss_val = torch.nn.functional.mse_loss(out, data.y)
+        for data in train_loader:
+            data = data.to(device)
 
-            optimizer.zero_grad()  # Clear gradients
-            loss.backward()  # Backward pass
-            
-            # 添加梯度裁剪
+            # Forward
+            out = model(data)  # out shape: [total_nodes_in_batch]
+
+            # Loss Calculation (ListMLE)
+            # 注意：ListMLE 期望 [batch, seq_len]。
+            # DataLoader 默认把多个图拼成一个大图 (Batch)。
+            # 你的 ListMLE 实现中做了 view(1, -1)，这意味着它把整个 Batch (8个图的所有节点)
+            # 当作一个长列表来排序。这在全局 ranking 上是可行的，但理论上最好是按图计算 loss 再平均。
+            # 为了兼容你现有的 ListMLE，这里保持现状。
+            loss = listMLE(out, data.y)
+
+            optimizer.zero_grad()
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-            optimizer.step()  # Update parameters
+            optimizer.step()
 
             total_loss += loss.item()
-            total_loss_val += loss_val.item()
 
         # Calculate average loss for the epoch
         avg_loss = total_loss / len(train_loader)
-        avg_loss_val = total_loss_val / len(train_loader)
+        scheduler.step()
 
-        IDKN_logger.info('Epoch: {:04d}, loss_train: {:.6f}, loss_val: {:.6f}, time: {:.2f}s'.format(
-            epoch + 1, avg_loss, avg_loss_val, time.time() - t_total
-        ))
+        IDKN_logger.info(f'Epoch: {epoch + 1:04d}, Loss: {avg_loss:.6f}, Time: {time.time() - t_total:.2f}s')
 
-        if avg_loss < best:
-            best = avg_loss
+        # 保存最佳模型
+        if avg_loss < best_loss:
+            best_loss = avg_loss
             best_epoch = epoch
             bad_counter = 0
-            save_model(epoch, CHECKPOINTS_PATH)
+            save_model(model, optimizer, epoch, CHECKPOINTS_PATH)
         else:
             bad_counter += 1
 
-        if bad_counter == 50:
-            IDKN_logger.info("Early stopping triggered.")
+        if bad_counter >= 100:
+            IDKN_logger.info("Early stopping.")
             break
+
     IDKN_logger.info("Optimization Finished!")
     IDKN_logger.info("Total time elapsed: {:.2f}s".format(time.time() - t_total))
-    IDKN_logger.info("Best Epoch: {:04d} with loss: {:.4f}".format(best_epoch, best))
+    IDKN_logger.info("Best Epoch: {:04d} with loss: {:.4f}".format(best_epoch, best_loss))
     IDKN_logger.info("Best model saved in: {}".format(CHECKPOINTS_PATH))
