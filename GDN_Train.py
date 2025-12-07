@@ -13,78 +13,39 @@ import torch.optim as optim
 from Model import CGNN_New, CGNN_GAT, GDN_SIR_Predictor
 from Utils import pickle_read, get_logger, sparse_adj_to_edge_index
 
-# DEFAULT_EPS = 1e-10
-DEFAULT_EPS = 0.0001
+DEFAULT_EPS = 1e-10
 PADDED_Y_VALUE = -1
-PADDED_INDEX_VALUE = -1
 
 
 def listMLE(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VALUE):
     """
-    FROM: https://github.com/allegro/allRank/blob/master/allrank/models/losses/listMLE.py
-    ListMLE loss introduced in "Listwise Approach to Learning to Rank - Theory and Algorithm".
-    :param y_pred: predictions from the model, shape [batch_size, slate_length]
-    :param y_true: ground truth labels, shape [batch_size, slate_length]
-    :param eps: epsilon value, used for numerical stability
-    :param padded_value_indicator: an indicator of the y_true index containing a padded item, e.g. -1
-    :return: loss value, a torch.Tensor
+    ListMLE loss.
+    注意：这里输入的 y_pred 和 y_true 应该是属于【同一张图】的节点。
     """
-    # Reshape the input
-    # if len(y_true.size()) == 1:
     y_pred = y_pred.view(1, -1)
     y_true = y_true.view(1, -1)
-    #print('listmle: y_true:', y_true.size(), 'y_pred', y_pred.size())
-    # shuffle for randomised tie resolution
+
     random_indices = range(y_pred.shape[-1])
-    #print(y_pred.shape[-1])
     y_pred_shuffled = y_pred[:, random_indices]
     y_true_shuffled = y_true[:, random_indices]
 
     y_true_sorted, indices = y_true_shuffled.sort(descending=True, dim=-1)
-
     mask = y_true_sorted == padded_value_indicator
 
     preds_sorted_by_true = torch.gather(y_pred_shuffled, dim=1, index=indices)
     preds_sorted_by_true[mask] = float("-inf")
 
     max_pred_values, _ = preds_sorted_by_true.max(dim=1, keepdim=True)
-
     preds_sorted_by_true_minus_max = preds_sorted_by_true - max_pred_values
 
-
-    # 增加数值稳定性的检查
-
-    if torch.isnan(y_pred).any() or torch.isinf(y_pred).any():
-
-        IDKN_logger.info("预测值中存在NaN或Inf")
-
-    # 增加eps值以提高数值稳定性
-
-    DEFAULT_EPS = 1e-10  # 改为更小的值
-
-    # 在计算exp之前进行clip操作
-
-    preds_sorted_by_true_minus_max = torch.clamp(
-
-        preds_sorted_by_true_minus_max, 
-
-        min=-100,  # 防止exp操作溢出
-
-        max=100
-
-    )
+    # 数值稳定性 Clip
+    preds_sorted_by_true_minus_max = torch.clamp(preds_sorted_by_true_minus_max, min=-100, max=100)
 
     cumsums = torch.cumsum(preds_sorted_by_true_minus_max.exp().flip(dims=[1]), dim=1).flip(dims=[1])
-
     observation_loss = torch.log(cumsums + eps) - preds_sorted_by_true_minus_max
-    # print('listmle obs loss:', observation_loss)
 
     observation_loss[mask] = 0.0
-    listmle = torch.mean(torch.sum(observation_loss, dim=1))
-    #print('listmle loss:', listmle.item())
-
-    return listmle
-
+    return torch.mean(torch.sum(observation_loss, dim=1))
 
 def save_model(model, optimizer, epoch, path):
     checkpoint = {
@@ -94,37 +55,6 @@ def save_model(model, optimizer, epoch, path):
     }
     path_checkpoint = os.path.join(path, "checkpoint_{}_epoch.pkl".format(epoch))
     torch.save(checkpoint, path_checkpoint)
-
-
-def load_model(checkpoint_path, model_class, device):
-    """
-    加载保存的模型检查点
-    :param checkpoint_path: 模型文件的路径 (.pkl 文件)
-    :param model_class: 定义的模型类，例如 IDKN
-    :param device: 设备（'cuda' 或 'cpu'）
-    :return: 加载权重的模型实例
-    """
-    # 初始化模型
-    model = model_class().to(device)
-    checkpoint = torch.load(checkpoint_path, map_location=device)  # 加载检查点
-    model.load_state_dict(checkpoint['model_state_dict'])  # 加载模型参数
-    return model
-
-def preprocess_features(embeddings):
-    """对嵌入向量进行预处理"""
-    # 标准化
-    mean = np.mean(embeddings, axis=0)
-    std = np.std(embeddings, axis=0)
-    normalized_embeddings = (embeddings - mean) / (std + 1e-8)
-    
-    # 确保没有极端值
-    normalized_embeddings = np.clip(
-        normalized_embeddings, 
-        -5,  # 下限
-        5    # 上限
-    )
-    
-    return normalized_embeddings
 
 if __name__ == '__main__':
 
@@ -182,9 +112,21 @@ if __name__ == '__main__':
     # num_nodes_max 不是必须的，因为输入特征是广播的，但可以用来设定 hidden_dim
     model = GDN_SIR_Predictor(hidden_dim=64).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
-    # 可以加一个 Scheduler
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.5)
+    optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=5e-4)
+
+    # 使用 ReduceLROnPlateau (智能调度)
+    # mode='min': 监测指标越小越好 (Loss)
+    # factor=0.5: 每次调整为原来的 0.5 倍
+    # patience=50: 如果 50 个 epoch 内 Loss 没有明显下降(threshold)，就触发调整
+    # min_lr=1e-6: 学习率下限
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode='min',
+        factor=0.8,
+        patience=80,
+        verbose=True,
+        min_lr=1e-5
+    )
 
     t_total = time.time()
     best_loss = float('inf')
@@ -203,13 +145,30 @@ if __name__ == '__main__':
             # Forward
             out = model(data)  # out shape: [total_nodes_in_batch]
 
-            # Loss Calculation (ListMLE)
-            # 注意：ListMLE 期望 [batch, seq_len]。
-            # DataLoader 默认把多个图拼成一个大图 (Batch)。
-            # 你的 ListMLE 实现中做了 view(1, -1)，这意味着它把整个 Batch (8个图的所有节点)
-            # 当作一个长列表来排序。这在全局 ranking 上是可行的，但理论上最好是按图计算 loss 再平均。
-            # 为了兼容你现有的 ListMLE，这里保持现状。
-            loss = listMLE(out, data.y)
+            # 按图拆分计算 Loss (Graph-wise Loss)
+            # data.batch 是一个向量 [0,0,0, 1,1,1, ...] 标记每个节点属于 batch 中的哪张图
+            batch_loss = 0
+            num_graphs = data.batch.max().item() + 1
+
+            # 对 Batch 中的每一张图单独计算 Ranking Loss
+            for i in range(num_graphs):
+                mask = (data.batch == i)
+                if mask.sum() > 0:  # 确保图非空
+                    pred_i = out[mask]
+                    true_i = data.y[mask]
+                    # 只在单张图内部进行排序比较
+                    # 1. 计算该图的节点数
+                    num_nodes_i = data.y[mask].size(0)
+
+                    # 2. 计算 Loss 并除以节点数 (归一化)
+                    # 这样 Loss 就变成了 "平均每个节点的排序误差"
+                    # 数值会从 2600 变成 2.6 左右
+                    loss_i = listMLE(pred_i, true_i) / num_nodes_i
+
+                    batch_loss += loss_i
+
+            # 取平均 Loss
+            loss = batch_loss / num_graphs
 
             optimizer.zero_grad()
             loss.backward()
@@ -220,7 +179,13 @@ if __name__ == '__main__':
 
         # Calculate average loss for the epoch
         avg_loss = total_loss / len(train_loader)
-        scheduler.step()
+        # [优化点 3]: 更新调度器 (必须传入监控指标 avg_loss)
+        scheduler.step(avg_loss)
+
+        if (epoch + 1) % 10 == 0:
+            # 在日志里打印一个当前的学习率
+            current_lr = optimizer.param_groups[0]['lr']
+            IDKN_logger.info(f'Epoch: {epoch + 1:04d}, Loss: {avg_loss:.6f}, LR: {current_lr:.6f}, Time: {time.time() - t_total:.2f}s')
 
         IDKN_logger.info(f'Epoch: {epoch + 1:04d}, Loss: {avg_loss:.6f}, Time: {time.time() - t_total:.2f}s')
 
@@ -233,7 +198,7 @@ if __name__ == '__main__':
         else:
             bad_counter += 1
 
-        if bad_counter >= 100:
+        if bad_counter >= 150:
             IDKN_logger.info("Early stopping.")
             break
 

@@ -16,77 +16,39 @@ from torch_geometric.utils import dense_to_sparse, to_dense_adj
 from Model import CGNN_New, CGNN_GAT
 from Utils import pickle_read, get_logger, sparse_adj_to_edge_index
 
-# DEFAULT_EPS = 1e-10
-DEFAULT_EPS = 0.0001
+DEFAULT_EPS = 1e-10
 PADDED_Y_VALUE = -1
-PADDED_INDEX_VALUE = -1
 
 
 def listMLE(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VALUE):
     """
-    FROM: https://github.com/allegro/allRank/blob/master/allrank/models/losses/listMLE.py
-    ListMLE loss introduced in "Listwise Approach to Learning to Rank - Theory and Algorithm".
-    :param y_pred: predictions from the model, shape [batch_size, slate_length]
-    :param y_true: ground truth labels, shape [batch_size, slate_length]
-    :param eps: epsilon value, used for numerical stability
-    :param padded_value_indicator: an indicator of the y_true index containing a padded item, e.g. -1
-    :return: loss value, a torch.Tensor
+    ListMLE loss.
+    注意：这里输入的 y_pred 和 y_true 应该是属于【同一张图】的节点。
     """
-    # Reshape the input
-    # if len(y_true.size()) == 1:
     y_pred = y_pred.view(1, -1)
     y_true = y_true.view(1, -1)
-    #print('listmle: y_true:', y_true.size(), 'y_pred', y_pred.size())
-    # shuffle for randomised tie resolution
+
     random_indices = range(y_pred.shape[-1])
-    #print(y_pred.shape[-1])
     y_pred_shuffled = y_pred[:, random_indices]
     y_true_shuffled = y_true[:, random_indices]
 
     y_true_sorted, indices = y_true_shuffled.sort(descending=True, dim=-1)
-
     mask = y_true_sorted == padded_value_indicator
 
     preds_sorted_by_true = torch.gather(y_pred_shuffled, dim=1, index=indices)
     preds_sorted_by_true[mask] = float("-inf")
 
     max_pred_values, _ = preds_sorted_by_true.max(dim=1, keepdim=True)
-
     preds_sorted_by_true_minus_max = preds_sorted_by_true - max_pred_values
 
-
-    # 增加数值稳定性的检查
-
-    if torch.isnan(y_pred).any() or torch.isinf(y_pred).any():
-
-        IDKN_logger.info("预测值中存在NaN或Inf")
-
-    # 增加eps值以提高数值稳定性
-
-    DEFAULT_EPS = 1e-10  # 改为更小的值
-
-    # 在计算exp之前进行clip操作
-
-    preds_sorted_by_true_minus_max = torch.clamp(
-
-        preds_sorted_by_true_minus_max, 
-
-        min=-100,  # 防止exp操作溢出
-
-        max=100
-
-    )
+    # 数值稳定性 Clip
+    preds_sorted_by_true_minus_max = torch.clamp(preds_sorted_by_true_minus_max, min=-100, max=100)
 
     cumsums = torch.cumsum(preds_sorted_by_true_minus_max.exp().flip(dims=[1]), dim=1).flip(dims=[1])
-
     observation_loss = torch.log(cumsums + eps) - preds_sorted_by_true_minus_max
-    # print('listmle obs loss:', observation_loss)
 
     observation_loss[mask] = 0.0
-    listmle = torch.mean(torch.sum(observation_loss, dim=1))
-    #print('listmle loss:', listmle.item())
-
-    return listmle
+    return torch.mean(torch.sum(observation_loss, dim=1))
 
 
 def save_model(epoch, path):
@@ -111,21 +73,6 @@ def load_model(checkpoint_path, model_class, device):
     model.load_state_dict(checkpoint['model_state_dict'])  # 加载模型参数
     return model
 
-def preprocess_features(embeddings):
-    """对嵌入向量进行预处理"""
-    # 标准化
-    mean = np.mean(embeddings, axis=0)
-    std = np.std(embeddings, axis=0)
-    normalized_embeddings = (embeddings - mean) / (std + 1e-8)
-    
-    # 确保没有极端值
-    normalized_embeddings = np.clip(
-        normalized_embeddings, 
-        -5,  # 下限
-        5    # 上限
-    )
-    
-    return normalized_embeddings
 
 if __name__ == '__main__':
 
