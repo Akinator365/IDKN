@@ -208,8 +208,8 @@ if __name__ == '__main__':
     print(f"Using device: {device}")
 
     # 加载模型检查点
-    best = 312
-    checkpoint_path = f"./training/IDKN/2025-12-06_19-18-23/checkpoint_{best}_epoch.pkl"
+    best = 487
+    checkpoint_path = f"./training/IDKN/2025-12-07_21-17-15/checkpoint_{best}_epoch.pkl"
     #best = 284
     #checkpoint_path = f"./training/IDKN/2025-04-22_23-15-48/checkpoint_{best}_epoch.pkl"
     # best = 292

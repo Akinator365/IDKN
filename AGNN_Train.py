@@ -11,7 +11,7 @@ from scipy.stats import kendalltau
 from torch_geometric.graphgym import optim
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-from torch_geometric.utils import dense_to_sparse, to_dense_adj
+from torch_geometric.utils import dense_to_sparse, to_dense_adj, to_dense_batch
 
 from Model import CGNN_New, CGNN_GAT
 from Utils import pickle_read, get_logger, sparse_adj_to_edge_index
@@ -19,36 +19,76 @@ from Utils import pickle_read, get_logger, sparse_adj_to_edge_index
 DEFAULT_EPS = 1e-10
 PADDED_Y_VALUE = -1
 
-
-def listMLE(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VALUE):
+# 改用向量化版本的 ListMLE，支持 Batch 并行计算
+def listMLE_batch(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VALUE):
     """
-    ListMLE loss.
-    注意：这里输入的 y_pred 和 y_true 应该是属于【同一张图】的节点。
+    向量化版本的 ListMLE，支持 Batch 并行计算。
+    输入形状: [batch_size, max_nodes]
     """
-    y_pred = y_pred.view(1, -1)
-    y_true = y_true.view(1, -1)
+    # Reshape the input
+    # if len(y_true.size()) == 1:
+    # y_pred = y_pred.view(1, -1)  <-- 删除，不再需要展平
+    # y_true = y_true.view(1, -1)  <-- 删除
 
-    random_indices = range(y_pred.shape[-1])
+    # 随机打乱以打破平局 (Random tie breaking)
+    # y_pred: [B, N], y_true: [B, N]
+    batch_size, n_nodes = y_pred.shape
+    random_indices = torch.randperm(n_nodes)
+
+    # shuffle for randomised tie resolution
+    # random_indices = range(y_pred.shape[-1])
+    # print(y_pred.shape[-1])
     y_pred_shuffled = y_pred[:, random_indices]
     y_true_shuffled = y_true[:, random_indices]
 
     y_true_sorted, indices = y_true_shuffled.sort(descending=True, dim=-1)
+
     mask = y_true_sorted == padded_value_indicator
 
     preds_sorted_by_true = torch.gather(y_pred_shuffled, dim=1, index=indices)
+
+    # 将填充位置的预测值设为负无穷，使其在 softmax 中不起作用
     preds_sorted_by_true[mask] = float("-inf")
 
     max_pred_values, _ = preds_sorted_by_true.max(dim=1, keepdim=True)
+
     preds_sorted_by_true_minus_max = preds_sorted_by_true - max_pred_values
 
-    # 数值稳定性 Clip
-    preds_sorted_by_true_minus_max = torch.clamp(preds_sorted_by_true_minus_max, min=-100, max=100)
+    # 增加数值稳定性的检查
+
+    # if torch.isnan(y_pred).any() or torch.isinf(y_pred).any():
+
+    #    IDKN_logger.info("预测值中存在NaN或Inf")
+
+    # 增加eps值以提高数值稳定性
+
+    # DEFAULT_EPS = 1e-10  # 改为更小的值
+
+    # 在计算exp之前进行clip操作
+
+    preds_sorted_by_true_minus_max = torch.clamp(
+
+        preds_sorted_by_true_minus_max,
+
+        min=-100,  # 防止exp操作溢出
+
+        max=100
+
+    )
 
     cumsums = torch.cumsum(preds_sorted_by_true_minus_max.exp().flip(dims=[1]), dim=1).flip(dims=[1])
+
     observation_loss = torch.log(cumsums + eps) - preds_sorted_by_true_minus_max
+    # print('listmle obs loss:', observation_loss)
 
     observation_loss[mask] = 0.0
-    return torch.mean(torch.sum(observation_loss, dim=1))
+
+    # 返回每张图的总 Loss (形状: [Batch_Size])
+    # 注意：这里我们不求 mean，只求 sum，方便外部做归一化
+    # listmle = torch.mean(torch.sum(observation_loss, dim=1))
+    # print('listmle loss:', listmle.item())
+
+    return torch.sum(observation_loss, dim=1)
 
 
 def save_model(epoch, path):
@@ -106,8 +146,10 @@ if __name__ == '__main__':
         for id in range(num_graph):
             network_name = f"{network}_{id}"
             single_adj_path = os.path.join(adj_path, network_type + '_graph', network, network_name + '_adj.npz')
-            single_labels_path = os.path.join(labels_path, network_type + '_graph', network, network_name + '_labels.npy')
-            single_embedding_path = os.path.join(embedding_path, network_type + '_graph', network, network_name + '_embedding.npy')
+            single_labels_path = os.path.join(labels_path, network_type + '_graph', network,
+                                              network_name + '_labels.npy')
+            single_embedding_path = os.path.join(embedding_path, network_type + '_graph', network,
+                                                 network_name + '_embedding.npy')
 
             node_feature = np.load(single_embedding_path)
             # 转换为 PyTorch 张量
@@ -115,7 +157,7 @@ if __name__ == '__main__':
 
             adj_sparse = sp.sparse.load_npz(single_adj_path)  # 加载压缩稀疏矩阵
             adj_matrix = torch.FloatTensor(adj_sparse.toarray())  # 转换为密集矩阵
-            edge_index = sparse_adj_to_edge_index(adj_sparse) # 转换为边索引
+            edge_index = sparse_adj_to_edge_index(adj_sparse)  # 转换为边索引
 
             # adj_matrix = pickle_read(single_adj_path)
             # adj = torch.FloatTensor(adj_matrix)
@@ -125,7 +167,7 @@ if __name__ == '__main__':
             # edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0]  # 转为 edge_index 格式
 
             # 计算节点数
-            num_nodes = adj_matrix.shape[0] # 根据 adj_matrix 计算节点数：num_nodes = adj_matrix.shape[0]
+            num_nodes = adj_matrix.shape[0]  # 根据 adj_matrix 计算节点数：num_nodes = adj_matrix.shape[0]
 
             # 转换为 PyTorch 张量
             y = torch.tensor(labels, dtype=torch.float)  # 标签
@@ -133,7 +175,7 @@ if __name__ == '__main__':
             # 创建 PyTorch Geometric 的 Data 对象
             data = Data(x=x, edge_index=edge_index, y=y)
 
-            #data = Data(x=x, edge_index=edge_index, num_nodes=num_nodes, adj=adj, y=y)
+            # data = Data(x=x, edge_index=edge_index, num_nodes=num_nodes, adj=adj, y=y)
 
             # 将图数据添加到 data_list 中
             data_list.append(data)
@@ -141,10 +183,7 @@ if __name__ == '__main__':
     # 将data_list分为训练集和测试集
     # 打乱数据
     np.random.shuffle(data_list)
-    # train_dataset = data_list[:round(len(data_list) * 0.8)]
-    # test_dataset = data_list[round(len(data_list) * 0.8):]
     train_loader = DataLoader(data_list, batch_size=8, shuffle=True, follow_batch=['x'])
-    # test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     random.seed(17)
     np.random.seed(17)
@@ -172,13 +211,41 @@ if __name__ == '__main__':
             # adj_matrix_reconstructed = to_dense_adj(data.edge_index, max_num_nodes=data.num_nodes).squeeze(0)
 
             out = model(data.x, data.edge_index)  # Forward pass
-            loss = listMLE(out, data.y) # Compute loss
-            #loss = torch.nn.functional.mse_loss(out, data.y)
+
+            # === [改造点 1] 将稀疏输出转换为 Dense Batch 以便按图计算 Loss ===
+            # batch_idx: [Total_Nodes] -> 指示每个节点属于哪个图
+            # out_dense: [Batch_Size, Max_Nodes]
+            # mask: [Batch_Size, Max_Nodes] -> 指示哪些位置是真实节点，哪些是填充
+            out_dense, mask = to_dense_batch(out, data.batch)
+            y_dense, _ = to_dense_batch(data.y, data.batch)
+
+            # === [改造点 2] 处理 Padding ===
+            # 将填充位置的标签设为 -1 (PADDED_Y_VALUE)，这样 listMLE 就会忽略它们
+            # ~mask 表示填充的位置
+            y_dense[~mask] = PADDED_Y_VALUE
+
+            # === [改造点 3] 一次性计算整个 Batch 的 Loss ===
+            # graph_losses: [Batch_Size]
+            graph_losses = listMLE_batch(out_dense, y_dense)
+
+            # === [改造点 4] 归一化 (除以每张图的实际节点数) ===
+            # mask.sum(dim=1) 得到每张图的真实节点数
+            num_nodes_per_graph = mask.sum(dim=1).float()
+            # 避免除以 0 (虽然理论上不会有空图)
+            num_nodes_per_graph = torch.clamp(num_nodes_per_graph, min=1.0)
+
+            normalized_losses = graph_losses / num_nodes_per_graph
+
+            # === [改造点 5] 取 Batch 平均 ===
+            loss = normalized_losses.mean()
+
+            # 为了兼容之前的日志逻辑，虽然MSE在排序任务上意义不大，但也保留计算（需调整形状）
+            # out 展平后和 data.y 形状一致，可以直接算 MSE
             loss_val = torch.nn.functional.mse_loss(out, data.y)
 
             optimizer.zero_grad()  # Clear gradients
             loss.backward()  # Backward pass
-            
+
             # 添加梯度裁剪
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 

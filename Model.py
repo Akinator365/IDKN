@@ -367,7 +367,12 @@ class GDN_SIR_Predictor(nn.Module):
         # 使用 learnable embedding 比纯 torch.ones 表达能力稍强，
         # 但如果为了严格模拟 DCRS 论文，可以改回固定全 1 输入。
         # 这里我使用一个单一的 learnable vector 广播到所有节点，模拟“初始均匀病毒”
-        self.initial_val = nn.Parameter(torch.ones(1, hidden_dim))
+        # [修复 1]: 引入度值编码器 (打破对称性的关键)
+        self.degree_encoder = nn.Linear(1, hidden_dim)
+
+        # [修复 2]: 使用随机初始化而不是全 1
+        self.initial_val = nn.Parameter(torch.randn(1, hidden_dim))
+
         # GDN 层 (堆叠 4 层以捕获 4-hop 传播)
         self.gdn1 = GDNConv(hidden_dim, hidden_dim)
         self.gdn2 = GDNConv(hidden_dim, hidden_dim)
@@ -386,9 +391,18 @@ class GDN_SIR_Predictor(nn.Module):
             # 如果没有 num_nodes 属性，尝试从 edge_index 推断
             curr_num_nodes = edge_index.max().item() + 1
 
+        row, col = edge_index
+        deg = degree(col, curr_num_nodes, dtype=torch.float).view(-1, 1)
+        deg = deg.to(edge_index.device)
+        # 对度值做 Log 平滑，防止数值过大
+        deg = torch.log(deg + 1)
+
+        # [步骤 2]: 编码度值
+        deg_emb = F.relu(self.degree_encoder(deg))  # (N, hidden_dim)
+
         # 1. 构造初始特征 (N, D)
         # 将 (1, D) 的初始向量扩展为 (Batch_Total_Nodes, D)
-        x = self.initial_val.expand(curr_num_nodes, -1)
+        x = self.initial_val.expand(curr_num_nodes, -1) + deg_emb
 
         # 2. 添加自环 (Self-loops)
         # GDN 模拟扩散，必须有自环，否则能量会全部流失给邻居，自己不保留

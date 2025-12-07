@@ -12,40 +12,58 @@ from torch_geometric.loader import DataLoader
 import torch.optim as optim
 from Model import CGNN_New, CGNN_GAT, GDN_SIR_Predictor
 from Utils import pickle_read, get_logger, sparse_adj_to_edge_index
+from torch_geometric.utils import to_dense_batch
 
 DEFAULT_EPS = 1e-10
 PADDED_Y_VALUE = -1
 
 
-def listMLE(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VALUE):
+def listMLE_batch(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VALUE):
     """
-    ListMLE loss.
-    注意：这里输入的 y_pred 和 y_true 应该是属于【同一张图】的节点。
+    向量化版本的 ListMLE，支持 Batch 并行计算。
+    输入形状: [batch_size, max_nodes]
     """
-    y_pred = y_pred.view(1, -1)
-    y_true = y_true.view(1, -1)
+    # 随机打乱以打破平局 (Random tie breaking)
+    # y_pred: [B, N], y_true: [B, N]
+    batch_size, n_nodes = y_pred.shape
+    random_indices = torch.randperm(n_nodes)
 
-    random_indices = range(y_pred.shape[-1])
     y_pred_shuffled = y_pred[:, random_indices]
     y_true_shuffled = y_true[:, random_indices]
 
+    # 对真实标签进行排序
     y_true_sorted, indices = y_true_shuffled.sort(descending=True, dim=-1)
+
+    # 识别填充值 (Padding)
     mask = y_true_sorted == padded_value_indicator
 
+    # 根据真实标签的顺序重排预测值
     preds_sorted_by_true = torch.gather(y_pred_shuffled, dim=1, index=indices)
+
+    # 将填充位置的预测值设为负无穷，使其在 softmax 中不起作用
     preds_sorted_by_true[mask] = float("-inf")
 
+    # 数值稳定性处理：减去最大值
     max_pred_values, _ = preds_sorted_by_true.max(dim=1, keepdim=True)
     preds_sorted_by_true_minus_max = preds_sorted_by_true - max_pred_values
 
-    # 数值稳定性 Clip
+    # Clip 防止溢出
     preds_sorted_by_true_minus_max = torch.clamp(preds_sorted_by_true_minus_max, min=-100, max=100)
 
+    # 计算 Cumsum (ListMLE 核心)
+    # flip 是为了从后往前加 (Likelihood of being ranked 1st, given remaining items)
     cumsums = torch.cumsum(preds_sorted_by_true_minus_max.exp().flip(dims=[1]), dim=1).flip(dims=[1])
+
+    # Log Likelihood
     observation_loss = torch.log(cumsums + eps) - preds_sorted_by_true_minus_max
 
+    # 掩盖填充值的 Loss
     observation_loss[mask] = 0.0
-    return torch.mean(torch.sum(observation_loss, dim=1))
+
+    # 返回每张图的总 Loss (形状: [Batch_Size])
+    # 注意：这里我们不求 mean，只求 sum，方便外部做归一化
+    return torch.sum(observation_loss, dim=1)
+
 
 def save_model(model, optimizer, epoch, path):
     checkpoint = {
@@ -110,9 +128,9 @@ if __name__ == '__main__':
 
     # 初始化模型
     # num_nodes_max 不是必须的，因为输入特征是广播的，但可以用来设定 hidden_dim
-    model = GDN_SIR_Predictor(hidden_dim=64).to(device)
+    model = GDN_SIR_Predictor(hidden_dim=128).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=5e-4)
+    optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
     # 使用 ReduceLROnPlateau (智能调度)
     # mode='min': 监测指标越小越好 (Loss)
@@ -122,7 +140,7 @@ if __name__ == '__main__':
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode='min',
-        factor=0.8,
+        factor=0.9,
         patience=80,
         verbose=True,
         min_lr=1e-5
@@ -142,33 +160,36 @@ if __name__ == '__main__':
         for data in train_loader:
             data = data.to(device)
 
-            # Forward
-            out = model(data)  # out shape: [total_nodes_in_batch]
+            # 1. 前向传播 (GDN 依旧处理稀疏图，这是最高效的)
+            # out: [Total_Nodes]
+            out = model(data)
 
-            # 按图拆分计算 Loss (Graph-wise Loss)
-            # data.batch 是一个向量 [0,0,0, 1,1,1, ...] 标记每个节点属于 batch 中的哪张图
-            batch_loss = 0
-            num_graphs = data.batch.max().item() + 1
+            # 2. 【关键优化】将稀疏输出转换为 Dense Batch
+            # batch_idx: [Total_Nodes] -> 指示每个节点属于哪个图
+            # out_dense: [Batch_Size, Max_Nodes]
+            # mask: [Batch_Size, Max_Nodes] -> 指示哪些位置是真实节点，哪些是填充
+            out_dense, mask = to_dense_batch(out, data.batch)
+            y_dense, _ = to_dense_batch(data.y, data.batch)
 
-            # 对 Batch 中的每一张图单独计算 Ranking Loss
-            for i in range(num_graphs):
-                mask = (data.batch == i)
-                if mask.sum() > 0:  # 确保图非空
-                    pred_i = out[mask]
-                    true_i = data.y[mask]
-                    # 只在单张图内部进行排序比较
-                    # 1. 计算该图的节点数
-                    num_nodes_i = data.y[mask].size(0)
+            # 3. 处理 Padding
+            # 将填充位置的标签设为 -1 (PADDED_Y_VALUE)，这样 listMLE 就会忽略它们
+            # ~mask 表示填充的位置
+            y_dense[~mask] = PADDED_Y_VALUE
 
-                    # 2. 计算 Loss 并除以节点数 (归一化)
-                    # 这样 Loss 就变成了 "平均每个节点的排序误差"
-                    # 数值会从 2600 变成 2.6 左右
-                    loss_i = listMLE(pred_i, true_i) / num_nodes_i
+            # 4. 一次性计算整个 Batch 的 Loss
+            # graph_losses: [Batch_Size]
+            graph_losses = listMLE_batch(out_dense, y_dense)
 
-                    batch_loss += loss_i
+            # 5. 归一化 (除以每张图的实际节点数)
+            # mask.sum(dim=1) 得到每张图的真实节点数
+            num_nodes_per_graph = mask.sum(dim=1).float()
+            # 避免除以 0 (虽然理论上不会有空图)
+            num_nodes_per_graph = torch.clamp(num_nodes_per_graph, min=1.0)
 
-            # 取平均 Loss
-            loss = batch_loss / num_graphs
+            normalized_losses = graph_losses / num_nodes_per_graph
+
+            # 6. 取 Batch 平均
+            loss = normalized_losses.mean()
 
             optimizer.zero_grad()
             loss.backward()
