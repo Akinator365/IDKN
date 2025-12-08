@@ -320,7 +320,7 @@ class GDNConv(MessagePassing):
 
         # 4. 激活 (Activation - Eq 4)
         # 最后进行激活 sigma(.)
-        return F.relu(out)
+        return F.elu(out)
 
     def message(self, x_i, x_j, src_index, index, ptr, size_i):
         # x_j: 源节点特征 (E, out_channels)
@@ -398,7 +398,7 @@ class GDN_SIR_Predictor(nn.Module):
         deg = torch.log(deg + 1)
 
         # [步骤 2]: 编码度值
-        deg_emb = F.relu(self.degree_encoder(deg))  # (N, hidden_dim)
+        deg_emb = F.elu(self.degree_encoder(deg))  # (N, hidden_dim)
 
         # 1. 构造初始特征 (N, D)
         # 将 (1, D) 的初始向量扩展为 (Batch_Total_Nodes, D)
@@ -409,9 +409,9 @@ class GDN_SIR_Predictor(nn.Module):
         edge_index_loop, _ = add_self_loops(edge_index, num_nodes=curr_num_nodes)
 
         # 3. 逐层传播 (Layer-wise Propagation)
-        x = F.relu(self.gdn1(x, edge_index_loop))  # Layer 1
-        x = F.relu(self.gdn2(x, edge_index_loop))  # Layer 2
-        x = F.relu(self.gdn3(x, edge_index_loop))  # Layer 3
+        x = F.elu(self.gdn1(x, edge_index_loop))  # Layer 1
+        x = F.elu(self.gdn2(x, edge_index_loop))  # Layer 2
+        x = F.elu(self.gdn3(x, edge_index_loop))  # Layer 3
 
         # 4. 最终评分
         # 最后一层输出 (N, 1)
@@ -419,7 +419,7 @@ class GDN_SIR_Predictor(nn.Module):
 
         # 5. 激活函数
         # SIR 影响力恒 > 0，使用 ReLU 保证非负
-        return F.relu(score).squeeze(-1)  # 输出 (N, )
+        return F.softplus(score).squeeze(-1)  # 输出 (N, )
 
 
 # 适用于重构多维特征的（node2vec、struct2vec）GAE
