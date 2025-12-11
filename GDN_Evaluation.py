@@ -1,5 +1,6 @@
 import json
 import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import scipy as sp
 import numpy as np
 import torch
@@ -8,7 +9,7 @@ from scipy.stats import kendalltau, rankdata
 from torch_geometric.data import Data
 
 # 引入你的 GDN 模型
-from Model import GDN_SIR_Predictor
+from Model import GDN_SIR_Predictor, GDN_SIR_Predictor_Transformer, GDN_SIR_Predictor_Transformer_Pos
 from Utils import sparse_adj_to_edge_index, get_logger
 
 
@@ -210,12 +211,12 @@ if __name__ == '__main__':
 
     # 2. 模型初始化
     # 必须与训练时的参数保持一致 (hidden_dim=64)
-    model = GDN_SIR_Predictor(hidden_dim=64).to(device)
+    model = GDN_SIR_Predictor_Transformer_Pos(hidden_dim=64).to(device)
 
     # 3. 加载 Checkpoint
     # 请替换为你训练生成的具体路径
     # 例如: "./training/GDN_Direct/2025-12-06_21-30-00/checkpoint_500_epoch.pkl"
-    checkpoint_path = "./training/IDKN/2025-12-07_20-52-37/checkpoint_1002_epoch.pkl"
+    checkpoint_path = "./training/IDKN/2025-12-11_21-40-05/checkpoint_1637_epoch.pkl"
 
     try:
         model = load_model(checkpoint_path, model, device).eval()

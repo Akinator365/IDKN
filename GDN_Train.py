@@ -10,7 +10,8 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 import torch.optim as optim
-from Model import CGNN_New, CGNN_GAT, GDN_SIR_Predictor
+from Model import CGNN_New, CGNN_GAT, GDN_SIR_Predictor, GDN_SIR_Predictor_Transformer, GDN_SIR_Predictor_JK_Attention, \
+    GDN_SIR_Predictor_Transformer_Pos
 from Utils import pickle_read, get_logger, sparse_adj_to_edge_index
 from torch_geometric.utils import to_dense_batch
 
@@ -128,9 +129,9 @@ if __name__ == '__main__':
 
     # 初始化模型
     # num_nodes_max 不是必须的，因为输入特征是广播的，但可以用来设定 hidden_dim
-    model = GDN_SIR_Predictor(hidden_dim=128).to(device)
+    model = GDN_SIR_Predictor_Transformer_Pos(hidden_dim=64).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=5e-4)
 
     # 使用 ReduceLROnPlateau (智能调度)
     # mode='min': 监测指标越小越好 (Loss)
@@ -142,7 +143,6 @@ if __name__ == '__main__':
         mode='min',
         factor=0.9,
         patience=80,
-        verbose=True,
         min_lr=1e-5
     )
 

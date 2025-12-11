@@ -422,6 +422,283 @@ class GDN_SIR_Predictor(nn.Module):
         return F.softplus(score).squeeze(-1)  # 输出 (N, )
 
 
+# === 端到端预测模型 ===
+class GDN_SIR_Predictor_JK_Attention(nn.Module):
+    def __init__(self, hidden_dim=64):
+        super(GDN_SIR_Predictor_JK_Attention, self).__init__()
+
+        # 输入策略：
+        # 策略 A: 既然是 SIR 模拟，假设每个节点初始状态一样，用 Embedding 模拟 "1单位能量"
+        # 使用 learnable embedding 比纯 torch.ones 表达能力稍强，
+        # 但如果为了严格模拟 DCRS 论文，可以改回固定全 1 输入。
+        # 这里我使用一个单一的 learnable vector 广播到所有节点，模拟“初始均匀病毒”
+        # [修复 1]: 引入度值编码器 (打破对称性的关键)
+        self.degree_encoder = nn.Linear(1, hidden_dim)
+
+        # [修复 2]: 使用随机初始化而不是全 1
+        self.initial_val = nn.Parameter(torch.randn(1, hidden_dim))
+
+        # GDN 层 (堆叠 4 层以捕获 4-hop 传播)
+        self.gdn1 = GDNConv(hidden_dim, hidden_dim)
+        self.gdn2 = GDNConv(hidden_dim, hidden_dim)
+        self.gdn3 = GDNConv(hidden_dim, hidden_dim)
+        self.gdn4 = GDNConv(hidden_dim, hidden_dim)
+
+        # [新增] 层级注意力打分器
+        # 输入是某一层的特征，输出是该层对该节点的重要性分数 (标量)
+        self.layer_attn = nn.Sequential(
+            nn.Linear(hidden_dim, 64),
+            nn.Tanh(),
+            nn.Linear(64, 1, bias=False)
+        )
+
+        # 最后的评分层
+        self.score_fc = nn.Linear(hidden_dim, 1)
+
+    def forward(self, data):
+        # 获取输入
+        edge_index = data.edge_index
+
+        # 动态获取当前 batch 的总节点数
+        # PyG 的 DataLoader 会把多个图拼成一个大图，data.num_nodes 是当前 batch 的总节点数
+        if hasattr(data, 'num_nodes') and data.num_nodes is not None:
+            curr_num_nodes = data.num_nodes
+        else:
+            # 如果没有 num_nodes 属性，尝试从 edge_index 推断
+            curr_num_nodes = edge_index.max().item() + 1
+
+        row, col = edge_index
+        deg = degree(col, curr_num_nodes, dtype=torch.float).view(-1, 1)
+        deg = deg.to(edge_index.device)
+        # 对度值做 Log 平滑，防止数值过大
+        deg = torch.log(deg + 1)
+
+        # [步骤 2]: 编码度值
+        deg_emb = F.elu(self.degree_encoder(deg))  # (N, hidden_dim)
+
+        # 1. 构造初始特征 (N, D)
+        # 将 (1, D) 的初始向量扩展为 (Batch_Total_Nodes, D)
+        x = self.initial_val.expand(curr_num_nodes, -1) + deg_emb
+
+        # 2. 添加自环 (Self-loops)
+        # GDN 模拟扩散，必须有自环，否则能量会全部流失给邻居，自己不保留
+        edge_index_loop, _ = add_self_loops(edge_index, num_nodes=curr_num_nodes)
+
+        # 3. 逐层传播 (Layer-wise Propagation)
+        layer_embs = []
+        x = F.elu(self.gdn1(x, edge_index_loop))  # Layer 1
+        layer_embs.append(x)  # Layer 1
+        x = F.elu(self.gdn2(x, edge_index_loop))  # Layer 2
+        layer_embs.append(x)  # Layer 1
+        x = F.elu(self.gdn3(x, edge_index_loop))  # Layer 3
+        layer_embs.append(x)  # Layer 1
+        x = F.elu(self.gdn4(x, edge_index_loop))  # Layer 4
+        layer_embs.append(x)  # Layer 4
+        # --- [核心修改] 计算层级注意力 ---
+        # 1. 堆叠特征: [N, 4, D]
+        stack_x = torch.stack(layer_embs, dim=1)
+
+        # 2. 计算分数: [N, 4, 1]
+        attn_scores = self.layer_attn(stack_x)
+
+        # 3. 归一化权重 (对层维度 dim=1 做 softmax)
+        # 物理含义: 对于节点 i，这 4 层的权重和为 1
+        attn_weights = F.softmax(attn_scores, dim=1)
+
+        # 4. 加权求和 (Weighted Sum)
+        # [N, 4, 1] * [N, 4, D] -> sum(dim=1) -> [N, D]
+        x_final = (attn_weights * stack_x).sum(dim=1)
+
+        # --- 最终评分 ---
+        score = self.score_fc(x_final)
+        return F.softplus(score).squeeze(-1)
+
+
+# === 端到端预测模型 ===
+class GDN_SIR_Predictor_Transformer(nn.Module):
+    def __init__(self, hidden_dim=64):
+        super(GDN_SIR_Predictor_Transformer, self).__init__()
+
+        # 输入策略：
+        # 策略 A: 既然是 SIR 模拟，假设每个节点初始状态一样，用 Embedding 模拟 "1单位能量"
+        # 使用 learnable embedding 比纯 torch.ones 表达能力稍强，
+        # 但如果为了严格模拟 DCRS 论文，可以改回固定全 1 输入。
+        # 这里我使用一个单一的 learnable vector 广播到所有节点，模拟“初始均匀病毒”
+        # [修复 1]: 引入度值编码器 (打破对称性的关键)
+        self.degree_encoder = nn.Linear(1, hidden_dim)
+
+        # [修复 2]: 使用随机初始化而不是全 1
+        self.initial_val = nn.Parameter(torch.randn(1, hidden_dim))
+
+        # GDN 层 (堆叠 4 层以捕获 4-hop 传播)
+        self.gdn1 = GDNConv(hidden_dim, hidden_dim)
+        self.gdn2 = GDNConv(hidden_dim, hidden_dim)
+        self.gdn3 = GDNConv(hidden_dim, hidden_dim)
+        self.gdn4 = GDNConv(hidden_dim, hidden_dim)
+
+        # [新增] 一个微型 Transformer Encoder
+        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=4, dim_feedforward=256, batch_first=True)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=1)
+
+        # 最后的 Readout 需要处理 Transformer 的输出
+        # 可以用 MaxPool 或者取最后一个 Token
+        self.score_fc = nn.Linear(hidden_dim, 1)
+
+    def forward(self, data):
+        # 获取输入
+        edge_index = data.edge_index
+
+        # 动态获取当前 batch 的总节点数
+        # PyG 的 DataLoader 会把多个图拼成一个大图，data.num_nodes 是当前 batch 的总节点数
+        if hasattr(data, 'num_nodes') and data.num_nodes is not None:
+            curr_num_nodes = data.num_nodes
+        else:
+            # 如果没有 num_nodes 属性，尝试从 edge_index 推断
+            curr_num_nodes = edge_index.max().item() + 1
+
+        row, col = edge_index
+        deg = degree(col, curr_num_nodes, dtype=torch.float).view(-1, 1)
+        deg = deg.to(edge_index.device)
+        # 对度值做 Log 平滑，防止数值过大
+        deg = torch.log(deg + 1)
+
+        # [步骤 2]: 编码度值
+        deg_emb = F.elu(self.degree_encoder(deg))  # (N, hidden_dim)
+
+        # 1. 构造初始特征 (N, D)
+        # 将 (1, D) 的初始向量扩展为 (Batch_Total_Nodes, D)
+        x = self.initial_val.expand(curr_num_nodes, -1) + deg_emb
+
+        # 2. 添加自环 (Self-loops)
+        # GDN 模拟扩散，必须有自环，否则能量会全部流失给邻居，自己不保留
+        edge_index_loop, _ = add_self_loops(edge_index, num_nodes=curr_num_nodes)
+
+        # 3. 逐层传播 (Layer-wise Propagation)
+        layer_embs = []
+        x = F.elu(self.gdn1(x, edge_index_loop))  # Layer 1
+        layer_embs.append(x)  # Layer 1
+        x = F.elu(self.gdn2(x, edge_index_loop))  # Layer 2
+        layer_embs.append(x)  # Layer 1
+        x = F.elu(self.gdn3(x, edge_index_loop))  # Layer 3
+        layer_embs.append(x)  # Layer 1
+        x = F.elu(self.gdn4(x, edge_index_loop))  # Layer 4
+        layer_embs.append(x)  # Layer 4
+
+        # 1. 构造序列: [N, 4, D]
+        # 把每个节点看作一个 Batch，4 层看作 Sequence Length
+        seq_x = torch.stack(layer_embs, dim=1)
+
+        # 2. Transformer 交互
+        # 它会让不同层的信息互相“交流”
+        trans_x = self.transformer(seq_x)  # Output: [N, 4, D]
+
+        # 3. 聚合策略
+        # 策略 A: Max Pooling (提取最显著的特征)
+        x_final, _ = torch.max(trans_x, dim=1)  # [N, D]
+
+        # 策略 B: Attention Pooling (也可以再套一个 Attention)
+        # 策略 C: 取 Layer 1 (局部) 和 Layer 4 (全局) 的 Transformer 混合结果
+
+        score = self.score_fc(x_final)
+        return F.softplus(score).squeeze(-1)
+
+
+# === 端到端预测模型 ===
+class GDN_SIR_Predictor_Transformer_Pos(nn.Module):
+    def __init__(self, hidden_dim=64):
+        super(GDN_SIR_Predictor_Transformer_Pos, self).__init__()
+
+        # 输入策略：
+        # 策略 A: 既然是 SIR 模拟，假设每个节点初始状态一样，用 Embedding 模拟 "1单位能量"
+        # 使用 learnable embedding 比纯 torch.ones 表达能力稍强，
+        # 但如果为了严格模拟 DCRS 论文，可以改回固定全 1 输入。
+        # 这里我使用一个单一的 learnable vector 广播到所有节点，模拟“初始均匀病毒”
+        # [修复 1]: 引入度值编码器 (打破对称性的关键)
+        self.degree_encoder = nn.Linear(1, hidden_dim)
+
+        # [修复 2]: 使用随机初始化而不是全 1
+        self.initial_val = nn.Parameter(torch.randn(1, hidden_dim))
+
+        # GDN 层 (堆叠 4 层以捕获 4-hop 传播)
+        self.gdn1 = GDNConv(hidden_dim, hidden_dim)
+        self.gdn2 = GDNConv(hidden_dim, hidden_dim)
+        self.gdn3 = GDNConv(hidden_dim, hidden_dim)
+        self.gdn4 = GDNConv(hidden_dim, hidden_dim)
+
+        # [新增] 可学习的层级位置编码 (4层)
+        # 形状: [1, 4, hidden_dim]
+        self.layer_pos_emb = nn.Parameter(torch.randn(1, 4, hidden_dim))
+
+        # [新增] 一个微型 Transformer Encoder
+        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=4, dim_feedforward=256, batch_first=True)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=1)
+
+        # 最后的 Readout 需要处理 Transformer 的输出
+        # 可以用 MaxPool 或者取最后一个 Token
+        self.score_fc = nn.Linear(hidden_dim, 1)
+
+    def forward(self, data):
+        # 获取输入
+        edge_index = data.edge_index
+
+        # 动态获取当前 batch 的总节点数
+        # PyG 的 DataLoader 会把多个图拼成一个大图，data.num_nodes 是当前 batch 的总节点数
+        if hasattr(data, 'num_nodes') and data.num_nodes is not None:
+            curr_num_nodes = data.num_nodes
+        else:
+            # 如果没有 num_nodes 属性，尝试从 edge_index 推断
+            curr_num_nodes = edge_index.max().item() + 1
+
+        row, col = edge_index
+        deg = degree(col, curr_num_nodes, dtype=torch.float).view(-1, 1)
+        deg = deg.to(edge_index.device)
+        # 对度值做 Log 平滑，防止数值过大
+        deg = torch.log(deg + 1)
+
+        # [步骤 2]: 编码度值
+        deg_emb = F.elu(self.degree_encoder(deg))  # (N, hidden_dim)
+
+        # 1. 构造初始特征 (N, D)
+        # 将 (1, D) 的初始向量扩展为 (Batch_Total_Nodes, D)
+        x = self.initial_val.expand(curr_num_nodes, -1) + deg_emb
+
+        # 2. 添加自环 (Self-loops)
+        # GDN 模拟扩散，必须有自环，否则能量会全部流失给邻居，自己不保留
+        edge_index_loop, _ = add_self_loops(edge_index, num_nodes=curr_num_nodes)
+
+        # 3. 逐层传播 (Layer-wise Propagation)
+        layer_embs = []
+        x = F.elu(self.gdn1(x, edge_index_loop))  # Layer 1
+        layer_embs.append(x)  # Layer 1
+        x = F.elu(self.gdn2(x, edge_index_loop))  # Layer 2
+        layer_embs.append(x)  # Layer 1
+        x = F.elu(self.gdn3(x, edge_index_loop))  # Layer 3
+        layer_embs.append(x)  # Layer 1
+        x = F.elu(self.gdn4(x, edge_index_loop))  # Layer 4
+        layer_embs.append(x)  # Layer 4
+
+        # 1. 构造序列: [N, 4, D]
+        # 把每个节点看作一个 Batch，4 层看作 Sequence Length
+        seq_x = torch.stack(layer_embs, dim=1)
+
+        # 2. [核心优化] 注入位置信息
+        # 广播加法: [N, 4, D] + [1, 4, D]
+        seq_x = seq_x + self.layer_pos_emb
+
+        # 3. Transformer 交互
+        trans_x = self.transformer(seq_x)
+
+        # 3. 聚合策略
+        # 策略 A: Max Pooling (提取最显著的特征)
+        x_final, _ = torch.max(trans_x, dim=1)  # [N, D]
+
+        # 策略 B: Attention Pooling (也可以再套一个 Attention)
+        # 策略 C: 取 Layer 1 (局部) 和 Layer 4 (全局) 的 Transformer 混合结果
+
+        score = self.score_fc(x_final)
+        return F.softplus(score).squeeze(-1)
+
+
 # 适用于重构多维特征的（node2vec、struct2vec）GAE
 class optimitzedGAE(nn.Module):
     def __init__(self, num_nodes):
