@@ -295,6 +295,9 @@ class GDNConv(MessagePassing):
 
         self.reset_parameters()
 
+        # [新增] 用于存储最近一次前向传播计算出的扩散权重
+        self.last_alpha = None
+
     def reset_parameters(self):
         gain = nn.init.calculate_gain('relu')
         nn.init.xavier_normal_(self.linear_src.weight, gain=gain)
@@ -348,9 +351,15 @@ class GDNConv(MessagePassing):
         # 标准 GAT 使用 softmax(score, index) -> 对指向同一目标节点的边归一化 (In-degree)
         # GDN 需要 softmax(score, src_index) -> 对来自同一源节点的边归一化 (Out-degree)
 
-        alpha = softmax(score, src_index, ptr, None)  # 这里的 None 代表 num_nodes，通常可以省略
+        #alpha = softmax(score, src_index, ptr, None)  # 这里的 None 代表 num_nodes，通常可以省略
+        alpha = torch.sigmoid(score)
 
         # alpha 是扩散权重 w_{ij} (或 w_{ji})
+
+        # [新增] 关键！保存 alpha
+        # 注意：这里的 alpha 是对应 edge_index 的所有边的权重
+        # 我们detach()掉梯度，只留数值，存到 self 中
+        self.last_alpha = alpha.detach()
 
         # --- 步骤 C: 消息加权 ---
         # 源节点特征 x_j 乘以它流向目标的比例 alpha

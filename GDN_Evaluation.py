@@ -216,7 +216,7 @@ if __name__ == '__main__':
     # 3. 加载 Checkpoint
     # 请替换为你训练生成的具体路径
     # 例如: "./training/GDN_Direct/2025-12-06_21-30-00/checkpoint_500_epoch.pkl"
-    checkpoint_path = "./training/IDKN/2025-12-11_21-40-05/checkpoint_1637_epoch.pkl"
+    checkpoint_path = "./training/IDKN/2025-12-18_22-17-02/checkpoint_877_epoch.pkl"
 
     try:
         model = load_model(checkpoint_path, model, device).eval()
