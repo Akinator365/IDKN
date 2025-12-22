@@ -6,18 +6,6 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib as mpl  # 导入 matplotlib 主包以处理 colormaps
 
-# --- 配置路径和参数 ---
-BASE_DIR = os.getcwd()
-TARGET_NETWORK_NAME = "karate_club_graph"
-SOURCE_NODE_ID = 1  # 必须与生成热力图时使用的源节点一致
-
-# 输入文件路径
-GRAPH_PATH = os.path.join(BASE_DIR, 'data', 'networks', 'realworld', f"{TARGET_NETWORK_NAME}.txt")
-HEATMAP_DIR = os.path.join(BASE_DIR, 'data', 'heatmaps', 'realworld', f"{TARGET_NETWORK_NAME}")
-NPY_PATH = os.path.join(HEATMAP_DIR, f"heatmap_source_{SOURCE_NODE_ID}.npy")
-#NPY_PATH = os.path.join(HEATMAP_DIR, f"model_prediction_heatmap_{SOURCE_NODE_ID}.npy")
-JSON_PATH = os.path.join(HEATMAP_DIR, "node_order.json")
-
 
 def visualize_sir_heatmap():
     # 1. 检查文件是否存在
@@ -112,4 +100,16 @@ def visualize_sir_heatmap():
 
 
 if __name__ == '__main__':
+    # --- 配置路径和参数 ---
+    BASE_DIR = os.getcwd()
+    TARGET_NETWORK_NAME = "karate_club_graph"
+    SOURCE_NODE_ID = 1  # 必须与生成热力图时使用的源节点一致
+
+    # 输入文件路径
+    GRAPH_PATH = os.path.join(BASE_DIR, 'data', 'networks', 'realworld', f"{TARGET_NETWORK_NAME}.txt")
+    HEATMAP_DIR = os.path.join(BASE_DIR, 'data', 'heatmaps', 'realworld', f"{TARGET_NETWORK_NAME}")
+    NPY_PATH = os.path.join(HEATMAP_DIR, f"heatmap_source_{SOURCE_NODE_ID}.npy")
+    #NPY_PATH = os.path.join(HEATMAP_DIR, f"model_prediction_heatmap_{SOURCE_NODE_ID}.npy")
+    JSON_PATH = os.path.join(HEATMAP_DIR, "node_order.json")
+
     visualize_sir_heatmap()

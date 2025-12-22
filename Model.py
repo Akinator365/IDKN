@@ -351,7 +351,7 @@ class GDNConv(MessagePassing):
         # 标准 GAT 使用 softmax(score, index) -> 对指向同一目标节点的边归一化 (In-degree)
         # GDN 需要 softmax(score, src_index) -> 对来自同一源节点的边归一化 (Out-degree)
 
-        #alpha = softmax(score, src_index, ptr, None)  # 这里的 None 代表 num_nodes，通常可以省略
+        # alpha = softmax(score, src_index, ptr, None)  # 这里的 None 代表 num_nodes，通常可以省略
         alpha = torch.sigmoid(score)
 
         # alpha 是扩散权重 w_{ij} (或 w_{ji})

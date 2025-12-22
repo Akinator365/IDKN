@@ -147,7 +147,7 @@ def main():
     # 3. [重要] 加载预训练权重
     # 如果你有训练好的 .pth 文件，请在这里加载。
     # 否则，这里使用的是随机初始化的权重，生成的热力图将是随机的，不具备物理意义。
-    model_weights_path = "./training/IDKN/2025-12-19_15-16-31/checkpoint_886_epoch.pkl"
+    model_weights_path = "./training/IDKN/2025-12-19_16-23-43/checkpoint_809_epoch.pkl"
     #model_weights_path = os.path.join(BASE_DIR, 'training', 'checkpoints', f'{TARGET_NETWORK_NAME}_best.pth')
 
     if os.path.exists(model_weights_path):
