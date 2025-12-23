@@ -81,7 +81,9 @@ class GPU_SIR_Simulator:
 
         # 显存保护：如果 total_cols 太大 (比如 > 100,000)，需要切分 batch
         # 假设我们一次最大处理 50000 列 (根据显存大小调整)
-        BATCH_LIMIT = 500000
+        gpu_total_bytes = cp.cuda.Device(0).mem_info[1]
+        gpu_total_mb = gpu_total_bytes / (1024 * 1024)
+        BATCH_LIMIT = get_optimal_batch_limit(self.num_nodes, gpu_total_mb)
 
         results = {}
 
@@ -249,6 +251,43 @@ def SIR_GPU_Driver(graph_path, labels_path, network_params):
 
     print("---- end creating labels ----")
 
+
+def get_optimal_batch_limit(num_nodes, total_memory_mb, safety_margin=0.95):
+    """
+    根据显存大小和节点数，自动计算最佳 BATCH_LIMIT。
+
+    :param num_nodes: 图的节点数量
+    :param total_memory_mb: 显卡总显存 (例如 32768 对于 32GB)
+    :param safety_margin: 安全系数，默认使用 95% 的显存，预留 5% 给系统
+    :return: 建议的 BATCH_LIMIT (int)
+    """
+    # 1. 计算可用显存 (Bytes)
+    # 减去约 2GB 的固定开销 (CUDA context, PyCharm, System, Graph Storage)
+    # 32GB 显卡建议保留 1GB 给系统，剩下的用于计算
+    fixed_overhead_mb = 1024
+    available_mem_bytes = (total_memory_mb - fixed_overhead_mb) * 1024 * 1024 * safety_margin
+
+    if available_mem_bytes <= 0:
+        print("[Warning] 显存预估不足，使用默认最小 Batch")
+        return 10000
+
+    # 2. 核心系数：每个 (Node * Batch) 单元占用的字节数
+    # 根据你的实测数据推算约为 32-36 Bytes。
+    bytes_per_cell = 32.0
+
+    # 3. 计算 Limit
+    # Formula: Limit = Available_Mem / (Nodes * Bytes_Per_Cell)
+    batch_limit = int(available_mem_bytes / (num_nodes * bytes_per_cell))
+
+    # 4. 上下限截断
+    # 设个上限防止太小图时数字过大导致溢出 int 范围或 Python 循环过慢
+    max_limit = 5000000  # 最大允许 500万
+    min_limit = 10000  # 最小允许 1万
+
+    batch_limit = max(min_limit, min(batch_limit, max_limit))
+
+    # 向上取整到 1000 的倍数好看点
+    return (batch_limit // 1000) * 1000
 
 # --- 集成到你的主流程 ---
 
