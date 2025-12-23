@@ -133,7 +133,7 @@ def plot_results(results, graph_type='BA'):
     plt.figure(figsize=(10, 6))
 
     if graph_type == 'BA':
-        sizes = ["500", "1000", "2000", "5000"]
+        sizes = ["500", "1000", "2000", "5000", "10000", "20000"]
         params = [3, 5, 8, 15]
 
         for size in sizes:
@@ -216,7 +216,7 @@ if __name__ == '__main__':
     # 3. 加载 Checkpoint
     # 请替换为你训练生成的具体路径
     # 例如: "./training/GDN_Direct/2025-12-06_21-30-00/checkpoint_500_epoch.pkl"
-    checkpoint_path = "./training/IDKN/2025-12-18_22-17-02/checkpoint_877_epoch.pkl"
+    checkpoint_path = "./training/IDKN/2025-12-22_19-55-05/checkpoint_1715_epoch.pkl"
 
     try:
         model = load_model(checkpoint_path, model, device).eval()

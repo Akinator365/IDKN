@@ -247,7 +247,7 @@ def interpret_results(eval_results):
 if __name__ == "__main__":
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
     network_type = "BA"
-    network = "BA_1000_5"
+    network = "BA_500_3"
     network_no = 0
     network_name = network + "_" + str(network_no)
     labels_path = os.path.join(TRAIN_LABELS_PATH, network_type + '_graph', network, network_name + '_labels.txt')

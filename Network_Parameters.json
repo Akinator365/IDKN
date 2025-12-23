@@ -6,7 +6,7 @@
         "m": 3,
         "beta": 0.3,
         "gamma": 1.0,
-        "simulations": 10000
+        "simulations": 30000
     },
     "BA_500_5": {
         "num": 96,
@@ -15,7 +15,7 @@
         "m": 5,
         "beta": 0.25,
         "gamma": 1.0,
-        "simulations": 10000
+        "simulations": 30000
     },
     "BA_500_8": {
         "num": 96,
@@ -24,7 +24,7 @@
         "m": 8,
         "beta": 0.15,
         "gamma": 1.0,
-        "simulations": 10000
+        "simulations": 30000
     },
     "BA_500_15": {
         "num": 96,
@@ -33,7 +33,7 @@
         "m": 15,
         "beta": 0.1,
         "gamma": 1.0,
-        "simulations": 10000
+        "simulations": 30000
     },
     "BA_1000_3": {
         "num": 96,
@@ -42,7 +42,7 @@
         "m": 3,
         "beta": 0.3,
         "gamma": 1.0,
-        "simulations": 10000
+        "simulations": 30000
     },
     "BA_1000_5": {
         "num": 96,
@@ -51,7 +51,7 @@
         "m": 5,
         "beta": 0.25,
         "gamma": 1.0,
-        "simulations": 10000
+        "simulations": 30000
     },
     "BA_1000_8": {
         "num": 96,
@@ -60,7 +60,7 @@
         "m": 8,
         "beta": 0.15,
         "gamma": 1.0,
-        "simulations": 10000
+        "simulations": 30000
     },
     "BA_1000_15": {
         "num": 96,
@@ -69,7 +69,7 @@
         "m": 15,
         "beta": 0.1,
         "gamma": 1.0,
-        "simulations": 10000
+        "simulations": 30000
     },
     "BA_2000_3": {
         "num": 32,
@@ -83,11 +83,11 @@
     "BA_2000_5": {
         "num": 32,
         "type": "BA",
-        "n": 1000,
+        "n": 2000,
         "m": 5,
         "beta": 0.25,
         "gamma": 1.0,
-        "simulations": 8000
+        "simulations": 10000
     },
     "BA_2000_8": {
         "num": 32,
@@ -96,7 +96,7 @@
         "m": 8,
         "beta": 0.15,
         "gamma": 1.0,
-        "simulations": 5000
+        "simulations": 10000
     },
     "BA_2000_15": {
         "num": 32,
@@ -105,7 +105,7 @@
         "m": 15,
         "beta": 0.1,
         "gamma": 1.0,
-        "simulations": 5000
+        "simulations": 10000
     },
     "BA_5000_3": {
         "num": 32,
@@ -114,7 +114,7 @@
         "m": 3,
         "beta": 0.3,
         "gamma": 1.0,
-        "simulations": 3000
+        "simulations": 5000
     },
     "BA_5000_5": {
         "num": 32,
@@ -123,7 +123,7 @@
         "m": 5,
         "beta": 0.25,
         "gamma": 1.0,
-        "simulations": 1000
+        "simulations": 5000
     },
     "BA_5000_8": {
         "num": 32,
@@ -132,16 +132,16 @@
         "m": 8,
         "beta": 0.15,
         "gamma": 1.0,
-        "simulations": 500
+        "simulations": 5000
     },
     "BA_5000_15": {
         "num": 32,
         "type": "BA",
         "n": 5000,
         "m": 15,
-        "beta": 0.15,
+        "beta": 0.05,
         "gamma": 1.0,
-        "simulations": 300
+        "simulations": 5000
     },
     "BA_10000_3": {
         "num": 32,
@@ -150,7 +150,7 @@
         "m": 3,
         "beta": 0.3,
         "gamma": 1.0,
-        "simulations": 300
+        "simulations": 2000
     },
     "BA_10000_5": {
         "num": 32,
@@ -159,7 +159,7 @@
         "m": 5,
         "beta": 0.25,
         "gamma": 1.0,
-        "simulations": 100
+        "simulations": 2000
     },
     "BA_10000_8": {
         "num": 32,
@@ -168,7 +168,7 @@
         "m": 8,
         "beta": 0.2,
         "gamma": 1.0,
-        "simulations": 100
+        "simulations": 2000
     },
     "BA_10000_15": {
         "num": 32,
@@ -177,7 +177,7 @@
         "m": 15,
         "beta": 0.1,
         "gamma": 1.0,
-        "simulations": 100
+        "simulations": 2000
     },
     "BA_20000_3": {
         "num": 32,
@@ -186,7 +186,7 @@
         "m": 3,
         "beta": 0.3,
         "gamma": 1.0,
-        "simulations": 100
+        "simulations": 1000
     },
     "BA_20000_5": {
         "num": 32,
@@ -195,7 +195,7 @@
         "m": 5,
         "beta": 0.25,
         "gamma": 1.0,
-        "simulations": 100
+        "simulations": 1000
     },
     "BA_20000_8": {
         "num": 32,
@@ -204,7 +204,7 @@
         "m": 8,
         "beta": 0.2,
         "gamma": 1.0,
-        "simulations": 100
+        "simulations": 1000
     },
     "BA_20000_15": {
         "num": 32,
@@ -213,6 +213,6 @@
         "m": 15,
         "beta": 0.1,
         "gamma": 1.0,
-        "simulations": 100
+        "simulations": 1000
     }
 }

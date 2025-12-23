@@ -285,7 +285,7 @@ def SIR_Multiple_Dynamic(graph_path, labels_path, network_params):
         print(f"  [Info] Gamma={gamma}, 运行 SIR 模型。")
 
     influence = {}
-    num_processes = 6  # (您设置的固定值)
+    num_processes = 22  # (您设置的固定值)
     print(f"  [Info] 使用 {num_processes} 个进程开始并行计算 (动态负载均衡)...")
 
     with Pool(processes=num_processes) as pool:

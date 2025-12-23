@@ -2,6 +2,8 @@ import json
 import os
 
 import networkx as nx
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import numpy as np
 import scipy as sp
 import torch
@@ -208,8 +210,8 @@ if __name__ == '__main__':
     print(f"Using device: {device}")
 
     # 加载模型检查点
-    best = 487
-    checkpoint_path = f"./training/IDKN/2025-12-07_21-17-15/checkpoint_{best}_epoch.pkl"
+    best = 437
+    checkpoint_path = f"./training/IDKN/2025-12-22_20-08-49/checkpoint_{best}_epoch.pkl"
     #best = 284
     #checkpoint_path = f"./training/IDKN/2025-04-22_23-15-48/checkpoint_{best}_epoch.pkl"
     # best = 292
