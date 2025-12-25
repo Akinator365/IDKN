@@ -232,7 +232,7 @@ if __name__ == '__main__':
     # 3. 加载 Checkpoint
     # 请替换为你训练生成的具体路径
     # 例如: "./training/GDN_Direct/2025-12-06_21-30-00/checkpoint_500_epoch.pkl"
-    checkpoint_path = "./training/IDKN/2025-12-24_18-15-56/checkpoint_522_epoch.pkl"
+    checkpoint_path = "./training/IDKN/2025-12-25_11-27-36/checkpoint_950_epoch.pkl"
 
     try:
         model = load_model(checkpoint_path, model, device).eval()
@@ -248,8 +248,8 @@ if __name__ == '__main__':
         print("\n--- Evaluating Training Set (Small) ---")
         with open("Network_Parameters_small.json") as f:
             train_params = json.load(f)
-        train_results = Evaluation(model, TRAIN_DATASET_PATH, TRAIN_ADJ_PATH, TRAIN_LABELS_PATH, train_params, device)
-        plot_results(train_results, graph_type='BA')
+        # train_results = Evaluation(model, TRAIN_DATASET_PATH, TRAIN_ADJ_PATH, TRAIN_LABELS_PATH, train_params, device)
+        # plot_results(train_results, graph_type='BA')
 
     # (B) 评估测试集 (BA Test)
     if os.path.exists("Network_Parameters_test.json"):
@@ -264,5 +264,9 @@ if __name__ == '__main__':
         print("\n--- Evaluating Realworld Networks ---")
         with open("Network_Parameters_realworld.json") as f:
             realworld_params = json.load(f)
-        realworld_results = Evaluation(model, REALWORLD_DATASET_PATH, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH, realworld_params, device)
-        plot_results(realworld_results, graph_type='realworld')
+        # realworld_results = Evaluation(model, REALWORLD_DATASET_PATH, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH, realworld_params, device)
+        # plot_results(realworld_results, graph_type='realworld')
+
+        # (D) 评估优化真实数据集 (Realworld)
+        # realworld_results = Evaluation(model, REALWORLD_DATASET_PATH, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH, realworld_params, device)
+        # plot_results(realworld_results, graph_type='realworld')

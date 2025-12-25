@@ -245,12 +245,16 @@ def interpret_results(eval_results):
 
 # 调用示例（替换为你的数据文件路径）
 if __name__ == "__main__":
+
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
+    REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
     network_type = "BA"
-    network = "BA_5000_15"
+    network = "BA_5000_3"
     network_no = 0
     network_name = network + "_" + str(network_no)
-    labels_path = os.path.join(TRAIN_LABELS_PATH, network_type + '_graph', network, network_name + '_labels.txt')
+    # labels_path = os.path.join(TRAIN_LABELS_PATH, network_type + '_graph', network, network_name + '_labels.txt')
+    realworld_name = "AirTraffic"
+    labels_path = os.path.join(REALWORLD_LABELS_PATH, realworld_name + '_labels.txt')
 
     # 2. 读取数据
     df = load_sir_data(labels_path)
