@@ -12,7 +12,7 @@ from torch_geometric.loader import DataLoader
 import torch.optim as optim
 from Model import CGNN_New, CGNN_GAT, GDN_SIR_Predictor, GDN_SIR_Predictor_Transformer, GDN_SIR_Predictor_JK_Attention, \
     GDN_SIR_Predictor_Transformer_Pos
-from Utils import pickle_read, get_logger, sparse_adj_to_edge_index
+from Utils import pickle_read, get_logger, sparse_adj_to_edge_index, load_aligned_labels
 from torch_geometric.utils import to_dense_batch
 
 DEFAULT_EPS = 1e-10
@@ -79,8 +79,11 @@ if __name__ == '__main__':
 
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
+    TRAIN_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'train')
+
     adj_path = TRAIN_ADJ_PATH
     labels_path = TRAIN_LABELS_PATH
+    dataset_path = TRAIN_DATASET_PATH
 
     date = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     CHECKPOINTS_PATH = os.path.join(os.getcwd(), 'training', 'IDKN', date)
@@ -98,26 +101,52 @@ if __name__ == '__main__':
 
     data_list = []  # 用于存储多个图的数据
     IDKN_logger.info("Processing graphs...")
+
+    total_loaded_count = 0  # 总图数量计数器
+
     for network in network_params:
         network_type = network_params[network]['type']
         num_graph = network_params[network]['num']
         IDKN_logger.info(f'Processing {network} graphs...')
+
+        current_network_count = 0  # 当前网络类型计数器
+
         for id in range(num_graph):
             network_name = f"{network}_{id}"
             single_adj_path = os.path.join(adj_path, network_type + '_graph', network, network_name + '_adj.npz')
-            single_labels_path = os.path.join(labels_path, network_type + '_graph', network, network_name + '_labels.npy')
+            single_labels_path = os.path.join(labels_path, network_type + '_graph', network, network_name + '_labels.txt')
+            single_network_path = os.path.join(dataset_path, network_type + '_graph', network, network_name + '.txt')
 
             adj_sparse = sp.sparse.load_npz(single_adj_path)  # 加载压缩稀疏矩阵
             edge_index = sparse_adj_to_edge_index(adj_sparse) # 转换为边索引
 
-            labels = np.load(single_labels_path)
-            y = torch.tensor(labels, dtype=torch.float)
+            # --- 调用封装好的方法获取对齐的 Label ---
+            y = load_aligned_labels(single_network_path, single_labels_path)
 
-            # 创建 PyTorch Geometric 的 Data 对象
-            data = Data(edge_index=edge_index, y=y, num_nodes=len(labels))
+            if y is None:
+                IDKN_logger.error(f"Skipping {network_name} due to missing files.")
+                continue
+
+            # 简单校验一下长度是否对齐
+            # adj_sparse.shape[0] 是图的节点数，应该和 y 的长度一致
+            if y.shape[0] != adj_sparse.shape[0]:
+                IDKN_logger.warning(f"Size Mismatch! Adj: {adj_sparse.shape[0]}, Label: {y.shape[0]} in {network_name}")
+
+            # --- 创建 PyG Data ---
+            data = Data(edge_index=edge_index, y=y, num_nodes=len(y))
 
             # 将图数据添加到 data_list 中
             data_list.append(data)
+
+            # [新增] 计数增加
+            current_network_count += 1
+            total_loaded_count += 1
+
+        # [新增] 打印该类型网络实际加载数量
+        IDKN_logger.info(f"--> Successfully loaded {current_network_count} graphs for {network}")
+
+    # [新增] 打印总图数量
+    IDKN_logger.info(f"Total graphs loaded: {total_loaded_count}")
 
     train_loader = DataLoader(data_list, batch_size=8, shuffle=True)
 

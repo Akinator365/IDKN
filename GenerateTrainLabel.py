@@ -249,14 +249,6 @@ def SIR_Multiple(graph_path, labels_path, network_params):
     print(f"Influence values saved to {txt_filename}")
     print("---- end creating labels ----")
 
-def Conver_to_Array(labels_path):
-    # 读取label，转换为array
-    with open(labels_path + '.txt', "r") as f:
-        lines = f.readlines()
-        labels = np.array([float(line.strip().split("\t")[1]) for line in lines])
-    #print(labels)
-    np.save(labels_path + '.npy', labels)
-
 # --- 优化原有的 SIR_Multiple ---
 def SIR_Multiple_Dynamic(graph_path, labels_path, network_params):
     """
@@ -285,7 +277,7 @@ def SIR_Multiple_Dynamic(graph_path, labels_path, network_params):
         print(f"  [Info] Gamma={gamma}, 运行 SIR 模型。")
 
     influence = {}
-    num_processes = 22  # (您设置的固定值)
+    num_processes = 12  # (您设置的固定值)
     print(f"  [Info] 使用 {num_processes} 个进程开始并行计算 (动态负载均衡)...")
 
     with Pool(processes=num_processes) as pool:
@@ -353,7 +345,6 @@ def GenerateTrainLabel(DATASET_PATH, LABELS_PATH, network_params):
         # ---
         elapsed_time = stop_timer(start_time)
 
-        Conver_to_Array(labels_path)
         print(f"Total time taken: {elapsed_time:.2f} seconds")
 
     for network in network_params:
@@ -390,7 +381,7 @@ if __name__ == '__main__':
     REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
 
     # 从文件中读取参数
-    with open("Network_Parameters.json", "r") as f:
+    with open("Network_Parameters_small.json", "r") as f:
         train_network_params = json.load(f)
     with open("Network_Parameters_test.json", "r") as f:
         test_network_params = json.load(f)

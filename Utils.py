@@ -2,7 +2,7 @@ import os
 import pickle
 import logging
 import sys
-
+import networkx as nx
 import numpy as np
 import scipy as sp
 import torch
@@ -158,3 +158,51 @@ def check_embeddings(embeddings):
     print(f"平均值：{np.mean(embeddings)}")
     print(f"是否包含NaN：{np.isnan(embeddings).any()}")
     print(f"是否包含Inf：{np.isinf(embeddings).any()}")
+
+
+def load_aligned_labels(graph_path, label_path):
+    """
+    读取标签文件和原始图结构文件，确保标签顺序与图结构的节点顺序严格一致。
+
+    Args:
+        graph_path (str): 原始网络结构文件路径 (EdgeList txt) -> 用于获取 Ground Truth 顺序
+        label_path (str): 标签文件路径 (txt) -> 提供 {ID: Score} 映射
+
+    Returns:
+        torch.Tensor: 排序对齐后的标签张量 (Shape: [N])
+    """
+    # --- 步骤 3: 加载 Label TXT 为字典 ---
+    label_map = {}
+    if os.path.exists(label_path):
+        with open(label_path, 'r') as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    node_id = int(parts[0])
+                    influence = float(parts[1])
+                    label_map[node_id] = influence
+    else:
+        print(f"[Error] Label file not found: {label_path}")
+        return None
+
+    # --- 步骤 4: 获取原始节点顺序 ---
+    # 必须读取原始图结构，因为这是 adj.npz 中矩阵行顺序的唯一来源
+    if os.path.exists(graph_path):
+        G_temp = nx.read_edgelist(graph_path, nodetype=int)
+        original_node_order = list(G_temp.nodes())
+    else:
+        print(f"[Error] Graph structure file not found: {graph_path}")
+        return None
+
+    # --- 步骤 5: 构建有序列表 ---
+    ordered_labels = []
+    for node_id in original_node_order:
+        if node_id in label_map:
+            ordered_labels.append(label_map[node_id])
+        else:
+            # 容错处理：打印警告并填 0
+            print(f"[Warning] Node {node_id} missing in label file: {label_path}")
+            ordered_labels.append(0.0)
+
+    # 转为 Tensor
+    return torch.tensor(ordered_labels, dtype=torch.float)

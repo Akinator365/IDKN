@@ -14,7 +14,7 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.utils import dense_to_sparse, to_dense_adj, to_dense_batch
 
 from Model import CGNN_New, CGNN_GAT
-from Utils import pickle_read, get_logger, sparse_adj_to_edge_index
+from Utils import pickle_read, get_logger, sparse_adj_to_edge_index, load_aligned_labels
 
 DEFAULT_EPS = 1e-10
 PADDED_Y_VALUE = -1
@@ -118,10 +118,13 @@ if __name__ == '__main__':
 
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
+    TRAIN_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'train')
     TRAIN_EMBEDDING_PATH = os.path.join(os.getcwd(), 'data', 'embedding', 'train')
+
     adj_path = TRAIN_ADJ_PATH
     labels_path = TRAIN_LABELS_PATH
     embedding_path = TRAIN_EMBEDDING_PATH
+    dataset_path = TRAIN_DATASET_PATH
 
     date = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     CHECKPOINTS_PATH = os.path.join(os.getcwd(), 'training', 'IDKN', date)
@@ -139,15 +142,18 @@ if __name__ == '__main__':
 
     data_list = []  # 用于存储多个图的数据
     IDKN_logger.info("Processing graphs...")
+    total_loaded_count = 0  # 总图数量计数器
     for network in network_params:
         network_type = network_params[network]['type']
         num_graph = network_params[network]['num']
         IDKN_logger.info(f'Processing {network} graphs...')
+        current_network_count = 0  # 当前网络类型计数器
         for id in range(num_graph):
             network_name = f"{network}_{id}"
             single_adj_path = os.path.join(adj_path, network_type + '_graph', network, network_name + '_adj.npz')
             single_labels_path = os.path.join(labels_path, network_type + '_graph', network,
-                                              network_name + '_labels.npy')
+                                              network_name + '_labels.txt')
+            single_network_path = os.path.join(dataset_path, network_type + '_graph', network, network_name + '.txt')
             single_embedding_path = os.path.join(embedding_path, network_type + '_graph', network,
                                                  network_name + '_embedding.npy')
 
@@ -159,18 +165,17 @@ if __name__ == '__main__':
             adj_matrix = torch.FloatTensor(adj_sparse.toarray())  # 转换为密集矩阵
             edge_index = sparse_adj_to_edge_index(adj_sparse)  # 转换为边索引
 
-            # adj_matrix = pickle_read(single_adj_path)
-            # adj = torch.FloatTensor(adj_matrix)
-            labels = np.load(single_labels_path)
+            # --- 调用封装好的方法获取对齐的 Label ---
+            y = load_aligned_labels(single_network_path, single_labels_path)
 
-            # adj_matrix 是一个邻接矩阵，我们需要将其转为边索引格式
-            # edge_index = dense_to_sparse(torch.tensor(adj_matrix))[0]  # 转为 edge_index 格式
+            if y is None:
+                IDKN_logger.error(f"Skipping {network_name} due to missing files.")
+                continue
 
-            # 计算节点数
-            num_nodes = adj_matrix.shape[0]  # 根据 adj_matrix 计算节点数：num_nodes = adj_matrix.shape[0]
-
-            # 转换为 PyTorch 张量
-            y = torch.tensor(labels, dtype=torch.float)  # 标签
+            # 简单校验一下长度是否对齐
+            # adj_sparse.shape[0] 是图的节点数，应该和 y 的长度一致
+            if y.shape[0] != adj_sparse.shape[0]:
+                IDKN_logger.warning(f"Size Mismatch! Adj: {adj_sparse.shape[0]}, Label: {y.shape[0]} in {network_name}")
 
             # 创建 PyTorch Geometric 的 Data 对象
             data = Data(x=x, edge_index=edge_index, y=y)

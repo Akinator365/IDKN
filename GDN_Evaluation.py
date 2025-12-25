@@ -10,7 +10,7 @@ from torch_geometric.data import Data
 
 # 引入你的 GDN 模型
 from Model import GDN_SIR_Predictor, GDN_SIR_Predictor_Transformer, GDN_SIR_Predictor_Transformer_Pos
-from Utils import sparse_adj_to_edge_index, get_logger
+from Utils import sparse_adj_to_edge_index, get_logger, load_aligned_labels
 
 
 def load_model(checkpoint_path, model, device):
@@ -38,7 +38,7 @@ def jaccard_similarity(output_rank, true_rank, k=10):
     return intersection / union if union != 0 else 0.0
 
 
-def Evaluation(model, ADJ_PATH, LABELS_PATH, network_params, device):
+def Evaluation(model, DATASET_PATH, ADJ_PATH, LABELS_PATH, network_params, device):
     """
     GDN 专用评估函数
     区别：不需要读取 EMBEDDING_PATH，直接构建 Data 对象输入模型
@@ -53,19 +53,22 @@ def Evaluation(model, ADJ_PATH, LABELS_PATH, network_params, device):
         # 生成处理条目
         if network_type == 'realworld':
             adj_path = os.path.join(ADJ_PATH, f"{network}_adj.npz")
-            label_path = os.path.join(LABELS_PATH, f"{network}_labels.npy")
-            entries.append((network, adj_path, label_path))
+            label_path = os.path.join(LABELS_PATH, f"{network}_labels.txt")
+            network_path = os.path.join(DATASET_PATH, f"{network}.txt")
+
+            entries.append((network, adj_path, label_path, network_path))
         else:
             base_dir = f"{network_type}_graph"
             for id in range(params['num']):
                 name = f"{network}_{id}"
                 adj_path = os.path.join(ADJ_PATH, base_dir, network, f"{name}_adj.npz")
-                label_path = os.path.join(LABELS_PATH, base_dir, network, f"{name}_labels.npy")
-                entries.append((name, adj_path, label_path))
+                label_path = os.path.join(LABELS_PATH, base_dir, network, f"{name}_labels.txt")
+                network_path = os.path.join(DATASET_PATH, base_dir, network, f"{name}.txt")
+                entries.append((name, adj_path, label_path, network_path))
 
         # 处理每个条目
-        for name, adj_path, label_path in entries:
-            if not all(os.path.exists(p) for p in [adj_path, label_path]):
+        for name, adj_path, label_path, network_path in entries:
+            if not all(os.path.exists(p) for p in [adj_path, label_path, network_path]):
                 print(f"Missing files for {name}, skipping...")
                 continue
 
@@ -74,7 +77,16 @@ def Evaluation(model, ADJ_PATH, LABELS_PATH, network_params, device):
             # 转换为 edge_index
             edge_index = sparse_adj_to_edge_index(adj_sparse, device=device)
 
-            label = torch.tensor(np.load(label_path)).float().to(device)
+            # 调用 load_aligned_labels 方法读取并对齐 TXT
+            # 注意：load_aligned_labels 返回的是 CPU Tensor
+            label = load_aligned_labels(network_path, label_path)
+
+            if label is None:
+                print(f"Error loading labels for {name}, skipping...")
+                continue
+
+            # 转为 Float 并移动到 device
+            label = label.float().to(device)
             num_nodes = label.shape[0]
 
             # 构建 PyG Data 对象 (GDN 需要 edge_index 和 num_nodes)
@@ -206,6 +218,10 @@ if __name__ == '__main__':
     TEST_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'test')
     REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
 
+    TRAIN_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'train')
+    TEST_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'test')
+    REALWORLD_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld')
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
@@ -216,7 +232,7 @@ if __name__ == '__main__':
     # 3. 加载 Checkpoint
     # 请替换为你训练生成的具体路径
     # 例如: "./training/GDN_Direct/2025-12-06_21-30-00/checkpoint_500_epoch.pkl"
-    checkpoint_path = "./training/IDKN/2025-12-22_19-55-05/checkpoint_1715_epoch.pkl"
+    checkpoint_path = "./training/IDKN/2025-12-24_18-15-56/checkpoint_522_epoch.pkl"
 
     try:
         model = load_model(checkpoint_path, model, device).eval()
@@ -232,7 +248,7 @@ if __name__ == '__main__':
         print("\n--- Evaluating Training Set (Small) ---")
         with open("Network_Parameters_small.json") as f:
             train_params = json.load(f)
-        train_results = Evaluation(model, TRAIN_ADJ_PATH, TRAIN_LABELS_PATH, train_params, device)
+        train_results = Evaluation(model, TRAIN_DATASET_PATH, TRAIN_ADJ_PATH, TRAIN_LABELS_PATH, train_params, device)
         plot_results(train_results, graph_type='BA')
 
     # (B) 评估测试集 (BA Test)
@@ -240,7 +256,7 @@ if __name__ == '__main__':
         print("\n--- Evaluating Test Set ---")
         with open("Network_Parameters_test.json") as f:
             test_params = json.load(f)
-        test_results = Evaluation(model, TEST_ADJ_PATH, TEST_LABELS_PATH, test_params, device)
+        test_results = Evaluation(model, TEST_DATASET_PATH, TEST_ADJ_PATH, TEST_LABELS_PATH, test_params, device)
         plot_results(test_results, graph_type='BA')
 
     # (C) 评估真实数据集 (Realworld)
@@ -248,5 +264,5 @@ if __name__ == '__main__':
         print("\n--- Evaluating Realworld Networks ---")
         with open("Network_Parameters_realworld.json") as f:
             realworld_params = json.load(f)
-        realworld_results = Evaluation(model, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH, realworld_params, device)
+        realworld_results = Evaluation(model, REALWORLD_DATASET_PATH, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH, realworld_params, device)
         plot_results(realworld_results, graph_type='realworld')
