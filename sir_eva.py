@@ -2,18 +2,6 @@ from scipy import stats
 import sys
 import os
 
-# --- 1. 在这里修改参数 ---
-# (确保这些设置与 sir_simulator.py 生成的文件相匹配)
-GAMMA_TO_COMPARE = 1.0  # (要比较的 Gamma 值, 例如 1.0 或 0.1)
-RUN1_ID = 0  # (要比较的第一个 run_id)
-RUN2_ID = 1  # (要比较的第二个 run_id)
-# -------------------------
-
-# --- 2. 固定路径设置 ---
-BASE_DIR = os.getcwd()
-RESULTS_BASE_PATH = os.path.join(BASE_DIR, 'training')
-
-
 def read_results_file(filepath):
     """
     读取模拟结果文件。
@@ -88,8 +76,19 @@ def calculate_kendall(file1_path, file2_path):
 
 # --- 3. 运行 ---
 if __name__ == "__main__":
+
+    # --- 1. 在这里修改参数 ---
+    # (确保这些设置与 sir_simulator.py 生成的文件相匹配)
+    GAMMA_TO_COMPARE = 1.0  # (要比较的 Gamma 值, 例如 1.0 或 0.1)
+    RUN1_ID = 0  # (要比较的第一个 run_id)
+    RUN2_ID = 1  # (要比较的第二个 run_id)
+    # -------------------------
+
+    # --- 2. 固定路径设置 ---
+    BASE_DIR = os.getcwd()
+    RESULTS_BASE_PATH = os.path.join(BASE_DIR, 'results')
     # 根据硬编码的参数构造文件路径
-    NETWORK_NAME = "BA_5000_15_0_labels"
+    NETWORK_NAME = "BA_5000_15_2_labels"
     file1_name = f"{NETWORK_NAME}_{RUN1_ID}.txt"
     file2_name = f"{NETWORK_NAME}_{RUN2_ID}.txt"
 
