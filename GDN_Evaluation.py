@@ -213,14 +213,17 @@ if __name__ == '__main__':
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
     TEST_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'test')
     REALWORLD_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'realworld')
+    REALWORLD_RENEW_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'realworld_renew')
 
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
     TEST_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'test')
     REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
+    REALWORLD_RENEW_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld_renew')
 
     TRAIN_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'train')
     TEST_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'test')
     REALWORLD_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld')
+    REALWORLD_RENEW_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld_renew')
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -256,17 +259,17 @@ if __name__ == '__main__':
         print("\n--- Evaluating Test Set ---")
         with open("Network_Parameters_test.json") as f:
             test_params = json.load(f)
-        test_results = Evaluation(model, TEST_DATASET_PATH, TEST_ADJ_PATH, TEST_LABELS_PATH, test_params, device)
-        plot_results(test_results, graph_type='BA')
+        # test_results = Evaluation(model, TEST_DATASET_PATH, TEST_ADJ_PATH, TEST_LABELS_PATH, test_params, device)
+        # plot_results(test_results, graph_type='BA')
 
     # (C) 评估真实数据集 (Realworld)
     if os.path.exists("Network_Parameters_realworld.json"):
         print("\n--- Evaluating Realworld Networks ---")
         with open("Network_Parameters_realworld.json") as f:
             realworld_params = json.load(f)
-        # realworld_results = Evaluation(model, REALWORLD_DATASET_PATH, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH, realworld_params, device)
-        # plot_results(realworld_results, graph_type='realworld')
+        realworld_results = Evaluation(model, REALWORLD_DATASET_PATH, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH, realworld_params, device)
+        plot_results(realworld_results, graph_type='realworld')
 
         # (D) 评估优化真实数据集 (Realworld)
-        # realworld_results = Evaluation(model, REALWORLD_DATASET_PATH, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH, realworld_params, device)
-        # plot_results(realworld_results, graph_type='realworld')
+        realworld_renew_results = Evaluation(model, REALWORLD_RENEW_DATASET_PATH, REALWORLD_RENEW_ADJ_PATH, REALWORLD_RENEW_LABELS_PATH, realworld_params, device)
+        plot_results(realworld_renew_results, graph_type='realworld')
