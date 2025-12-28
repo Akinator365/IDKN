@@ -203,14 +203,19 @@ def SIR_GPU_Driver(graph_path, labels_path, network_params):
     graph = nx.read_edgelist(graph_path)
     beta_c_result, k_avg, k2_avg = calculate_beta_c(graph)
 
-    # beta = network_params['beta']
-    beta = beta_c_result * 3
+    if network_params['type'] == 'WS' or network_params['type'] == 'SBM':
+        alpha = 1.5
+    elif network_params['type'] == 'LFR':
+        alpha = 2
+    else:
+        alpha = 3
+    beta = alpha * beta_c_result
     gamma = network_params['gamma']
     simulations = network_params['simulations']
 
     print(f"  [Info] Initialization CuPy/GPU resources...")
     print(f"  [Info] 理论阈值 beta_c: {beta_c_result:.6f} (<k>={k_avg:.4f}, <k^2>={k2_avg:.4f})")
-    print(f"  [Info] Beta: {beta} | Gamma: {gamma} | Sims: {simulations}")
+    print(f"  [Info] Alpha: {alpha} | Beta: {beta} | Gamma: {gamma} | Sims: {simulations}")
 
     # 初始化模拟器 (加载图到 GPU)
     simulator = GPU_SIR_Simulator(graph_path, beta, gamma)

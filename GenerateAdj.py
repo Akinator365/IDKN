@@ -51,9 +51,12 @@ if __name__ == '__main__':
     TRAIN_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'train')
     TEST_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'test')
     REALWORLD_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld')
+    REALWORLD_RENEW_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld_renew')
+
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
     TEST_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'test')
     REALWORLD_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'realworld')
+    REALWORLD_RENEW_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'realworld_renew')
 
     # 从文件中读取参数
     with open("Network_Parameters_small.json", "r") as f:
@@ -68,3 +71,4 @@ if __name__ == '__main__':
     GenerateAdj(TRAIN_ADJ_PATH, TRAIN_DATASET_PATH, train_network_params)
     GenerateAdj(TEST_ADJ_PATH, TEST_DATASET_PATH, test_network_params)
     GenerateAdj(REALWORLD_ADJ_PATH, REALWORLD_DATASET_PATH, realworld_network_params)
+    # GenerateAdj(REALWORLD_RENEW_ADJ_PATH, REALWORLD_RENEW_DATASET_PATH, realworld_network_params)

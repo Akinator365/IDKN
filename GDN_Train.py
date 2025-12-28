@@ -75,15 +75,50 @@ def save_model(model, optimizer, epoch, path):
     path_checkpoint = os.path.join(path, "checkpoint_{}_epoch.pkl".format(epoch))
     torch.save(checkpoint, path_checkpoint)
 
+
+# ================= 公共加载函数 =================
+def process_single_graph_data(adj_path, labels_path, network_path, graph_name):
+    """
+    封装了加载矩阵、Label、校验和创建 PyG Data 的逻辑
+    """
+    try:
+        if not os.path.exists(adj_path) or not os.path.exists(labels_path):
+            IDKN_logger.error(f"Skipping {graph_name} due to missing files.")
+            return None
+
+        adj_sparse = sp.sparse.load_npz(adj_path)  # 加载压缩稀疏矩阵
+        edge_index = sparse_adj_to_edge_index(adj_sparse) # 转换为边索引
+
+        # --- 调用封装好的方法获取对齐的 Label ---
+        y = load_aligned_labels(network_path, labels_path)
+
+        if y is None:
+            IDKN_logger.error(f"Skipping {graph_name} due to label loading failure.")
+            return None
+
+        # 简单校验一下长度是否对齐
+        # adj_sparse.shape[0] 是图的节点数，应该和 y 的长度一致
+        if y.shape[0] != adj_sparse.shape[0]:
+            IDKN_logger.warning(f"Size Mismatch! Adj: {adj_sparse.shape[0]}, Label: {y.shape[0]} in {graph_name}")
+
+        # --- 创建 PyG Data ---
+        data = Data(edge_index=edge_index, y=y, num_nodes=len(y))
+        return data
+
+    except Exception as e:
+        IDKN_logger.error(f"Error processing {graph_name}: {e}")
+        return None
+
+
 if __name__ == '__main__':
 
     TRAIN_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'train')
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
     TRAIN_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'train')
 
-    adj_path = TRAIN_ADJ_PATH
-    labels_path = TRAIN_LABELS_PATH
-    dataset_path = TRAIN_DATASET_PATH
+    REALWORLD_ADJ_PATH = os.path.join(os.getcwd(), 'data', 'adj', 'realworld')
+    REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
+    REALWORLD_DATASET_PATH = os.path.join(os.getcwd(), 'data', 'networks', 'realworld')
 
     date = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     CHECKPOINTS_PATH = os.path.join(os.getcwd(), 'training', 'IDKN', date)
@@ -104,50 +139,72 @@ if __name__ == '__main__':
 
     total_loaded_count = 0  # 总图数量计数器
 
-    for network in network_params:
-        network_type = network_params[network]['type']
-        num_graph = network_params[network]['num']
-        IDKN_logger.info(f'Processing {network} graphs...')
+    # 从文件中读取参数
+    with open("Network_Parameters_small.json", "r") as f:
+        train_network_params = json.load(f)
 
+    with open("Network_Parameters_realworld.json", "r") as f:
+        realworld_network_params = json.load(f)
+
+    data_list = []  # 用于存储多个图的数据 (所有图都放在这里)
+    total_loaded_count = 0  # 总图数量计数器
+
+    IDKN_logger.info("Processing all graphs (Realworld + Synthetic)...")
+
+    # # --- 1. 加载 Realworld 数据 ---
+    # IDKN_logger.info(">>> Start loading Realworld graphs...")
+    # for network in realworld_network_params:
+    #     IDKN_logger.info(f'Processing {network} (Realworld)...')
+    #
+    #     # 路径构造
+    #     single_adj_path = os.path.join(REALWORLD_ADJ_PATH, network + '_adj.npz')
+    #     single_labels_path = os.path.join(REALWORLD_LABELS_PATH, network + '_labels.txt')
+    #     single_network_path = os.path.join(REALWORLD_DATASET_PATH, network + '.txt')
+    #
+    #     # 调用封装函数
+    #     data = process_single_graph_data(single_adj_path, single_labels_path, single_network_path, network)
+    #
+    #     if data:
+    #         data_list.append(data)
+    #         total_loaded_count += 1
+    #         # 打印网络
+    #         IDKN_logger.info(f"--> Successfully loaded graph for {network}")
+
+    # --- 2. 加载 Synthetic (Train) 数据 ---
+    IDKN_logger.info(">>> Start loading Synthetic graphs...")
+    for network in train_network_params:
+        params = train_network_params[network]
+        network_type = params['type']
+        num_graph = params['num']
+
+        IDKN_logger.info(f'Processing {network} (Synthetic)...')
         current_network_count = 0  # 当前网络类型计数器
 
         for id in range(num_graph):
             network_name = f"{network}_{id}"
-            single_adj_path = os.path.join(adj_path, network_type + '_graph', network, network_name + '_adj.npz')
-            single_labels_path = os.path.join(labels_path, network_type + '_graph', network, network_name + '_labels.txt')
-            single_network_path = os.path.join(dataset_path, network_type + '_graph', network, network_name + '.txt')
 
-            adj_sparse = sp.sparse.load_npz(single_adj_path)  # 加载压缩稀疏矩阵
-            edge_index = sparse_adj_to_edge_index(adj_sparse) # 转换为边索引
+            # 路径构造 (合成数据有子目录结构)
+            single_adj_path = os.path.join(TRAIN_ADJ_PATH, network_type + '_graph', network, network_name + '_adj.npz')
+            single_labels_path = os.path.join(TRAIN_LABELS_PATH, network_type + '_graph', network,
+                                              network_name + '_labels.txt')
+            single_network_path = os.path.join(TRAIN_DATASET_PATH, network_type + '_graph', network,
+                                               network_name + '.txt')
 
-            # --- 调用封装好的方法获取对齐的 Label ---
-            y = load_aligned_labels(single_network_path, single_labels_path)
+            # 调用封装函数
+            data = process_single_graph_data(single_adj_path, single_labels_path, single_network_path, network_name)
 
-            if y is None:
-                IDKN_logger.error(f"Skipping {network_name} due to missing files.")
-                continue
-
-            # 简单校验一下长度是否对齐
-            # adj_sparse.shape[0] 是图的节点数，应该和 y 的长度一致
-            if y.shape[0] != adj_sparse.shape[0]:
-                IDKN_logger.warning(f"Size Mismatch! Adj: {adj_sparse.shape[0]}, Label: {y.shape[0]} in {network_name}")
-
-            # --- 创建 PyG Data ---
-            data = Data(edge_index=edge_index, y=y, num_nodes=len(y))
-
-            # 将图数据添加到 data_list 中
-            data_list.append(data)
-
-            # [新增] 计数增加
-            current_network_count += 1
-            total_loaded_count += 1
+            if data:
+                data_list.append(data)
+                current_network_count += 1
+                total_loaded_count += 1
 
         # [新增] 打印该类型网络实际加载数量
         IDKN_logger.info(f"--> Successfully loaded {current_network_count} graphs for {network}")
 
     # [新增] 打印总图数量
-    IDKN_logger.info(f"Total graphs loaded: {total_loaded_count}")
+    IDKN_logger.info(f"Total graphs loaded in data_list: {total_loaded_count}")
 
+    # 创建 DataLoader (这里包含了两种来源的所有数据)
     train_loader = DataLoader(data_list, batch_size=8, shuffle=True)
 
     random.seed(17)
