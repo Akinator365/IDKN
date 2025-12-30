@@ -214,5 +214,134 @@
         "beta": 0.1,
         "gamma": 1.0,
         "simulations": 1000
+    },
+    "WS_500": {
+        "num": 4,
+        "type": "WS",
+        "n": 500,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 30000
+    },
+    "WS_1000": {
+        "num": 4,
+        "type": "WS",
+        "n": 1000,
+        "m": 15,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 20000
+    },
+    "WS_2000": {
+        "num": 4,
+        "type": "WS",
+        "n": 2000,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 10000
+    },
+    "WS_5000": {
+        "num": 2,
+        "type": "WS",
+        "n": 5000,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 5000
+    },
+    "HK_500": {
+        "num": 4,
+        "type": "HK",
+        "n": 500,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 30000
+    },
+    "HK_1000": {
+        "num": 4,
+        "type": "HK",
+        "n": 1000,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 20000
+    },
+    "HK_2000": {
+        "num": 4,
+        "type": "HK",
+        "n": 2000,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 10000
+    },
+    "HK_5000": {
+        "num": 2,
+        "type": "HK",
+        "n": 5000,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 5000
+    },
+    "SBM_500": {
+        "num": 4,
+        "type": "SBM",
+        "n": 500,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 30000
+    },
+    "SBM_1000": {
+        "num": 4,
+        "type": "SBM",
+        "n": 1000,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 20000
+    },
+    "SBM_2000": {
+        "num": 4,
+        "type": "SBM",
+        "n": 2000,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 10000
+    },
+    "SBM_5000": {
+        "num": 2,
+        "type": "SBM",
+        "n": 5000,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 5000
+    },
+    "LFR_500": {
+        "num": 4,
+        "type": "LFR",
+        "n": 500,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 30000
+    },
+    "LFR_1000": {
+        "num": 4,
+        "type": "LFR",
+        "n": 1000,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 20000
+    },
+    "LFR_2000": {
+        "num": 4,
+        "type": "LFR",
+        "n": 2000,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 10000
+    },
+    "LFR_5000": {
+        "num": 2,
+        "type": "LFR",
+        "n": 5000,
+        "beta": 0.15,
+        "gamma": 1.0,
+        "simulations": 5000
     }
 }
