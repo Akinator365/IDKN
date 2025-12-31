@@ -144,7 +144,7 @@
         "simulations": 5000
     },
     "WS_500": {
-        "num": 8,
+        "num": 12,
         "type": "WS",
         "n": 500,
         "beta": 0.15,
@@ -152,7 +152,7 @@
         "simulations": 30000
     },
     "WS_1000": {
-        "num": 8,
+        "num": 12,
         "type": "WS",
         "n": 1000,
         "m": 15,
@@ -177,7 +177,7 @@
         "simulations": 5000
     },
     "HK_500": {
-        "num": 8,
+        "num": 12,
         "type": "HK",
         "n": 500,
         "beta": 0.15,
@@ -185,7 +185,7 @@
         "simulations": 30000
     },
     "HK_1000": {
-        "num": 8,
+        "num": 12,
         "type": "HK",
         "n": 1000,
         "beta": 0.15,
@@ -209,7 +209,7 @@
         "simulations": 5000
     },
     "SBM_500": {
-        "num": 8,
+        "num": 12,
         "type": "SBM",
         "n": 500,
         "beta": 0.15,
@@ -217,7 +217,7 @@
         "simulations": 30000
     },
     "SBM_1000": {
-        "num": 8,
+        "num": 12,
         "type": "SBM",
         "n": 1000,
         "beta": 0.15,
@@ -241,7 +241,7 @@
         "simulations": 5000
     },
     "LFR_500": {
-        "num": 8,
+        "num": 12,
         "type": "LFR",
         "n": 500,
         "beta": 0.15,
@@ -249,7 +249,7 @@
         "simulations": 30000
     },
     "LFR_1000": {
-        "num": 8,
+        "num": 12,
         "type": "LFR",
         "n": 1000,
         "beta": 0.15,
