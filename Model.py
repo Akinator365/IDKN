@@ -640,11 +640,6 @@ class GDN_SIR_Predictor_Transformer_Pos(nn.Module):
 
         self.dropout = dropout
 
-        self.norm1 = nn.LayerNorm(hidden_dim)
-        self.norm2 = nn.LayerNorm(hidden_dim)
-        self.norm3 = nn.LayerNorm(hidden_dim)
-        self.norm4 = nn.LayerNorm(hidden_dim)
-
         # [新增] 一个微型 Transformer Encoder
         encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=4, dim_feedforward=256, batch_first=True, dropout=0.3)
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=1)

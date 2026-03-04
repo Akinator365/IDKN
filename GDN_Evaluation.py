@@ -1,6 +1,12 @@
 import collections
 import json
 import os
+import pickle
+import re
+
+import networkx as nx
+from matplotlib.ticker import ScalarFormatter
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import scipy as sp
 import numpy as np
@@ -69,12 +75,16 @@ def Evaluation(model, DATASET_PATH, ADJ_PATH, LABELS_PATH, network_params, devic
 
         # 处理每个条目
         for name, adj_path, label_path, network_path in entries:
+            # 确保 results 中有 name 这个键
+            if name not in results:
+                results[name] = {}
             if not all(os.path.exists(p) for p in [adj_path, label_path, network_path]):
                 print(f"Missing files for {name}, skipping...")
                 continue
 
             # 1. 数据加载与构建
             adj_sparse = sp.sparse.load_npz(adj_path)
+
             # 转换为 edge_index
             edge_index = sparse_adj_to_edge_index(adj_sparse, device=device)
 
@@ -104,157 +114,220 @@ def Evaluation(model, DATASET_PATH, ADJ_PATH, LABELS_PATH, network_params, devic
             output_np = output.cpu().numpy().flatten()
             label_np = label.cpu().numpy().flatten()
 
-            # --- 指标计算逻辑保持不变 ---
+            # 方法 B: 度中心性 Baseline
+            degree_output = np.array(adj_sparse.sum(axis=1)).flatten()
 
-            # (1) Kendall's Tau
-            stat, pval = kendalltau(output_np, label_np)
-            log_pval = np.log10(pval) if pval > 0 else -100
+            # 构建 NetworkX 图用于计算复杂指标
+            # 注意：如果你的图是有向的，使用 nx.DiGraph()
+            G = nx.from_scipy_sparse_array(adj_sparse)
 
-            # (2) 单调性指数 (MI)
-            ranks = rankdata(-output_np, method='dense')
-            unique, counts = np.unique(ranks, return_counts=True)
-            sum_n_alpha = np.sum(counts * (counts - 1))
-            N = len(output_np)
-            if N <= 1:
-                mi = 1.0
-            else:
-                mi = (1 - sum_n_alpha / (N * (N - 1))) ** 2
+            # 2. Betweenness Centrality (介数中心性)
+            # 对于大图，k 可以设为较小值进行近似计算，这里默认全量计算
+            bc_dict = nx.betweenness_centrality(G)
+            bc_output = np.array([bc_dict[i] for i in range(num_nodes)])
 
-            # (3) Jaccard 相似度
-            percentages = [0.1, 0.2, 0.3, 0.4, 0.5]
-            jaccard_scores = []
-            for p in percentages:
-                k = max(1, int(N * p))
-                jaccard = jaccard_similarity(output_np, label_np, k)
-                jaccard_scores.append(jaccard)
+            # 3. Eigenvector Centrality (特征向量中心性)
+            try:
+                ec_dict = nx.eigenvector_centrality(G, max_iter=1000)
+                ec_output = np.array([ec_dict[i] for i in range(num_nodes)])
+            except:
+                # 如果不收敛，填 0 或使用 degree 代替
+                ec_output = np.zeros(num_nodes)
 
-            # 存储结果
-            if network not in results:
-                results[network] = {"statistics": [], "pvalues": [], "MI": [], "Jaccard": []}
-            results[network]["statistics"].append(stat)
-            results[network]["pvalues"].append(log_pval)
-            results[network]["MI"].append(mi)
-            results[network]["Jaccard"].append(jaccard_scores)
+            # 4. H-index (H 指数)
+            # 计算逻辑：一个节点的 H 指数是指其至少有 H 个邻居的度数都大于等于 H
+            ih_output = []
+            for node in range(num_nodes):
+                # 获取所有邻居的度数
+                neighbor_degrees = [G.degree(neighbor) for neighbor in G.neighbors(node)]
+                neighbor_degrees.sort(reverse=True)
+                h = 0
+                for i, deg in enumerate(neighbor_degrees):
+                    if deg >= i + 1:
+                        h = i + 1
+                    else:
+                        break
+                ih_output.append(h)
+            ih_output = np.array(ih_output)
 
-            print(f"{name} | Tau: {stat:.4f} | MI: {mi:.6f} | Jaccard: {jaccard:.4f}")
+            # 3. 统一计算并存储
+            methods_to_eval = {
+                "GDN_Model": output_np,
+                "Degree": degree_output,
+                "Betweenness": bc_output,
+                "Eigenvector": ec_output,
+                "H-index": ih_output
+            }
+
+            for m_name, m_pred in methods_to_eval.items():
+                metrics = compute_metrics(m_pred, label_np)
+
+                if m_name not in results[name]:
+                    results[name][m_name] = {"Tau": [], "MI": [], "Jaccard": []}
+
+                for metric_name, value in metrics.items():
+                    results[name][m_name][metric_name].append(value)
+
+            print(f"{name} | Model Tau: {results[name]['GDN_Model']['Tau'][-1]:.4f} | "
+                  f"Deg Tau: {results[name]['Degree']['Tau'][-1]:.4f}")
+
 
     return results
 
 
+def compute_metrics(pred_np, label_np):
+    """统一计算所有指标的辅助函数"""
+    N = len(pred_np)
+    # (1) Kendall's Tau
+    stat, pval = kendalltau(pred_np, label_np)
+
+    # (2) 单调性指数 (MI)
+    ranks = rankdata(-pred_np, method='dense')
+    unique, counts = np.unique(ranks, return_counts=True)
+    sum_n_alpha = np.sum(counts * (counts - 1))
+    mi = (1 - sum_n_alpha / (N * (N - 1))) ** 2 if N > 1 else 1.0
+
+    # (3) Jaccard 相似度 (取不同比例的均值或记录列表)
+    percentages = [0.1, 0.2, 0.3, 0.4, 0.5]
+    jaccard_scores = [jaccard_similarity(pred_np, label_np, max(1, int(N * p))) for p in percentages]
+
+    return {"Tau": stat, "MI": mi, "Jaccard": jaccard_scores}
+
+
 def plot_results(results):
     """
-    解析 results 字典并绘制两张分析图：
-    1. 左图 (BA Only): X轴=参数m, 线条=不同Size, Y轴=Tau
-    2. 右图 (All Types): X轴=Size, 线条=不同Type, Y轴=Tau (BA聚合均值)
+    1. 左图: BA 网络参数分析 (线性轴)
+    2. 右图: 全网络规模对比 (对数横坐标轴)
     """
+    methods = ["GDN_Model", "Degree", "H-index", "Betweenness", "Eigenvector"]
+    styles = {"GDN_Model": "-", "Degree": "--", "H-index": ":", "Betweenness": "-.", "Eigenvector": "--"}
+    # 定义固定颜色
+    color_map = {
+        "GDN_Model": "tab:red",
+        "Degree": "tab:gray",
+        "H-index": "tab:blue",
+        "Betweenness": "tab:green",
+        "Eigenvector": "tab:orange"
+    }
+    # ba_param_data: 用于图1 (BA m参数)
+    ba_param_data = collections.defaultdict(lambda: collections.defaultdict(list))
+    # comparison_data[net_type][m_name][size] = [list of taus]
+    comparison_data = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(list)))
 
-    # --- 1. 数据容器初始化 ---
-    # 用于图1：专门存 BA 数据 -> ba_data[size][m] = [list of taus]
-    ba_data = collections.defaultdict(lambda: collections.defaultdict(list))
+    # --- 数据解析 ---
+    for name, methods_dict in results.items():
+        parts = name.split('_')
+        if len(parts) < 2: continue
+        net_type, size = parts[0], int(parts[1])
 
-    # 用于图2：存所有类型数据 -> overall_data[type][size] = [list of taus]
-    overall_data = collections.defaultdict(lambda: collections.defaultdict(list))
+        for m_name, metrics in methods_dict.items():
+            taus = metrics.get("Tau", [])
+            if not taus: continue
 
-    # --- 2. 统一解析逻辑 ---
-    for key, val in results.items():
-        # 防御性检查
-        if "statistics" not in val or not val["statistics"]:
-            continue
+            # 存储所有类型、所有方法的规模对比数据
+            comparison_data[net_type][m_name][size].extend(taus)
 
-        parts = key.split('_')
-        if len(parts) < 2: continue  # 格式不对跳过
+            # 专门存储 BA 的参数敏感性数据 (仅限模型)
+            if net_type == 'BA' and m_name == "GDN_Model" and len(parts) >= 3:
+                try:
+                    m_val = int(parts[2])
+                    ba_param_data[size][m_val].extend(taus)
+                except:
+                    pass
 
-        network_type = parts[0]  # BA, WS, HK...
-        try:
-            network_size = int(parts[1])  # 500, 1000...
-        except ValueError:
-            continue
+    # --- 2. 动态布局计算 ---
+    # 图1 (BA参数) + 所有网络类型的对比图
+    net_types = sorted(comparison_data.keys())
+    n_plots = 2 + len(net_types)
+    n_cols = 3
+    n_rows = (n_plots + n_cols - 1) // n_cols
 
-        # === 动作 A: 无论什么网络，都存入 overall_data (用于图2) ===
-        # 注意：这里会自动把 BA_500_3, BA_500_5 等所有 BA_500 的数据合并到一个列表中
-        overall_data[network_type][network_size].extend(val["statistics"])
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(8 * n_cols, 7 * n_rows))
+    axes = axes.flatten()
 
-        # === 动作 B: 如果是 BA 网络，额外存入 ba_data (用于图1) ===
-        if network_type == 'BA' and len(parts) >= 3:
-            try:
-                m_param = int(parts[2])  # 获取 m 参数
-                ba_data[network_size][m_param].extend(val["statistics"])
-            except ValueError:
-                pass
+    # 公用格式化器
+    def set_log_xaxis(ax, sizes):
+        ax.set_xscale('log')
+        fmt = ScalarFormatter()
+        fmt.set_scientific(False)
+        ax.xaxis.set_major_formatter(fmt)
+        if sizes:
+            ax.set_xticks(sorted(list(sizes)))
+        ax.grid(True, which='both', linestyle='--', alpha=0.4)
 
-    # --- 3. 开始绘图 (1行2列) ---
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7))
-
-    # ==========================
-    # === 图 1: BA 网络参数分析 ===
-    # ==========================
-    # 获取 BA 出现过的所有尺寸并排序
-    ba_sizes = sorted(ba_data.keys())
-    # 固定的 m 参数列表 (用于 X 轴顺序)
+    # === 图 1: BA 网络参数分析 (保持线性) ===
+    ax1 = axes[0]
+    ba_sizes = sorted(ba_param_data.keys())
     ba_params = [3, 5, 8, 15]
-
-    # 使用 colormap 区分不同 Size
-    colors = plt.cm.viridis(np.linspace(0, 0.9, len(ba_sizes)))
-
+    colors_ba = plt.cm.viridis(np.linspace(0, 0.8, len(ba_sizes)))
     for i, size in enumerate(ba_sizes):
         x, y = [], []
         for m in ba_params:
-            vals = ba_data[size][m]
+            vals = ba_param_data[size][m]
             if vals:
                 x.append(m)
-                y.append(np.nanmean(vals))  # 计算平均值
-
+                y.append(np.nanmean(vals))
         if x:
-            ax1.plot(x, y, marker='o', label=f"Size {size}", linewidth=2, color=colors[i])
-
-    ax1.set_title("Analysis 1: BA Network Parameter Sensitivity", fontsize=14, fontweight='bold')
-    ax1.set_xlabel("Attachment Parameter ($m$)", fontsize=12)
-    ax1.set_ylabel("Kendall's Tau", fontsize=12)
-    ax1.set_xticks(ba_params)
-    ax1.legend(title="Network Size")
+            ax1.plot(x, y, marker='o', label=f"Size {size}", linewidth=2, color=colors_ba[i])
+    ax1.set_title("Analysis 1: BA Parameter Sensitivity", fontsize=14, fontweight='bold')
+    ax1.set_xlabel("m", fontsize=12);
+    ax1.set_ylabel("Tau", fontsize=12)
+    ax1.set_ylim(0.2, 1.0);
+    ax1.legend();
     ax1.grid(True, linestyle='--', alpha=0.6)
 
-    # ==========================
-    # === 图 2: 全网络规模对比 ===
-    # ==========================
-    sorted_types = sorted(overall_data.keys())
-    all_sizes_seen = set()
-    markers = ['o', 's', '^', 'D', 'v', 'X', 'P', '*']  # 不同形状区分类型
-
-    for idx, net_type in enumerate(sorted_types):
-        size_dict = overall_data[net_type]
+    # === 图 2: 全网络规模对比 (原图2 - 模型合集) ===
+    ax2 = axes[1]
+    markers = ['o', 's', '^', 'D', 'v', 'X', 'P', '*']
+    all_sizes = set()
+    for idx, t in enumerate(net_types):
+        size_dict = comparison_data[t]["GDN_Model"]
         sorted_sizes = sorted(size_dict.keys())
-
         x, y = [], []
-        for size in sorted_sizes:
-            vals = size_dict[size]
-            if vals:
-                # 核心逻辑：这里 BA 的 y 值是所有 m 参数结果的平均值
-                x.append(size)
-                y.append(np.nanmean(vals))
-                all_sizes_seen.add(size)
+        for s in sorted_sizes:
+            x.append(s);
+            y.append(np.nanmean(size_dict[s]));
+            all_sizes.add(s)
+        ax2.plot(x, y, marker=markers[idx % len(markers)], label=t, linewidth=2)
+    set_log_xaxis(ax2, all_sizes)
+    ax2.set_title("Analysis 2: All Networks Scale (GDN Only)", fontweight='bold')
+    ax2.set_xlabel("Size (N)");
+    ax2.set_ylabel("Tau");
+    ax2.set_ylim(0.2, 1.0);
+    ax2.legend()
 
-        if x:
-            ax2.plot(x, y,
-                     marker=markers[idx % len(markers)],
-                     label=net_type,
-                     linewidth=2.5,
-                     alpha=0.85)
+    # === 图 3 及以后: 独立对比图 (Model vs Baselines) ===
+    methods = ["GDN_Model", "Degree", "H-index", "Betweenness", "Eigenvector"]
+    m_colors = {"GDN_Model": "tab:red", "Degree": "tab:gray", "H-index": "tab:blue",
+                "Betweenness": "tab:green", "Eigenvector": "tab:orange"}
 
-    ax2.set_title("Analysis 2: Performance vs. Scale (All Networks)", fontsize=14, fontweight='bold')
-    ax2.set_xlabel("Network Size ($N$)", fontsize=12)
-    ax2.set_ylabel("Kendall's Tau", fontsize=12)
+    for i, t in enumerate(net_types):
+        ax = axes[i + 2]
+        sizes_seen = set()
+        for m_name in methods:
+            if m_name not in comparison_data[t]: continue
+            size_dict = comparison_data[t][m_name]
+            sorted_s = sorted(size_dict.keys())
+            x, y = [], []
+            for s in sorted_s:
+                x.append(s);
+                y.append(np.nanmean(size_dict[s]));
+                sizes_seen.add(s)
+            ax.plot(x, y, marker='o', label=m_name, color=m_colors.get(m_name),
+                    linestyle='-' if m_name == "GDN_Model" else '--')
 
-    # 强制显示所有存在的 Size 刻度
-    if all_sizes_seen:
-        ax2.set_xticks(sorted(list(all_sizes_seen)))
+        set_log_xaxis(ax, sizes_seen)
+        ax.set_title(f"Analysis {i + 3}: {t} Comparison", fontweight='bold')
+        ax.set_xlabel("Size (N)");
+        ax.set_ylabel("Tau");
+        ax.set_ylim(0.2, 1.0);
+        ax.legend()
 
-    ax2.legend(title="Network Type")
-    ax2.grid(True, linestyle='--', alpha=0.6)
+    # 隐藏多余子图
+    for j in range(i + 3, len(axes)): axes[j].axis('off')
 
     plt.tight_layout()
     plt.show()
-
 
 def plot_realworld_results(results):
     """绘图函数 (保持原样)"""
@@ -337,7 +410,7 @@ if __name__ == '__main__':
     # good 256 all graph
     # checkpoint_path = "./training/IDKN/2025-12-25_11-27-36/checkpoint_950_epoch.pkl"
     # 学飞了
-    checkpoint_path = "./training/IDKN/2025-12-31_14-37-07/checkpoint_100_epoch.pkl"
+    checkpoint_path = "./training/IDKN/2025-12-31_14-37-07/checkpoint_1287_epoch.pkl"
 
     try:
         model = load_model(checkpoint_path, model, device).eval()
@@ -345,6 +418,16 @@ if __name__ == '__main__':
     except FileNotFoundError:
         print(f"Error: Checkpoint file not found at {checkpoint_path}")
         exit()
+
+    # 使用正则表达式提取：日期时间 (2025-12-31_14-37-07) 和 Epoch (1287)
+    match = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}).*?checkpoint_(\d+)_epoch', checkpoint_path)
+    if match:
+        timestamp = match.group(1)
+        epoch = match.group(2)
+        test_result_filename = f"result_{timestamp}_epoch{epoch}.pkl"
+    else:
+        # 备选方案：如果正则匹配失败，使用简单哈希或固定名
+        test_result_filename = "eval_result_backup.pkl"
 
     # 4. 执行评估
 
@@ -361,16 +444,30 @@ if __name__ == '__main__':
         print("\n--- Evaluating Test Set ---")
         with open("Network_Parameters_test.json") as f:
             test_params = json.load(f)
-        # test_results = Evaluation(model, TEST_DATASET_PATH, TEST_ADJ_PATH, TEST_LABELS_PATH, test_params, device)
-        # plot_results(test_results)
+        # --- 2. 判断文件是否存在 ---
+        if os.path.exists(test_result_filename):
+            print(f"Found existing result file: {test_result_filename}")
+            print("Loading cached results and skipping evaluation...")
+            with open(test_result_filename, 'rb') as f:
+                test_results = pickle.load(f)
+        else:
+            print(f"No cached result found. Starting Evaluation...")
+            # 执行评估
+            test_results = Evaluation(model, TEST_DATASET_PATH, TEST_ADJ_PATH, TEST_LABELS_PATH, test_params, device)
+
+            # 保存结果
+            with open(test_result_filename, 'wb') as f:
+                pickle.dump(test_results, f)
+            print(f"Evaluation finished and results saved to {test_result_filename}")
+        plot_results(test_results)
 
     # (C) 评估真实数据集 (Realworld)
     if os.path.exists("Network_Parameters_realworld.json"):
         print("\n--- Evaluating Realworld Networks ---")
         with open("Network_Parameters_realworld.json") as f:
             realworld_params = json.load(f)
-        realworld_results = Evaluation(model, REALWORLD_DATASET_PATH, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH, realworld_params, device)
-        plot_realworld_results(realworld_results)
+        # realworld_results = Evaluation(model, REALWORLD_DATASET_PATH, REALWORLD_ADJ_PATH, REALWORLD_LABELS_PATH, realworld_params, device)
+        # plot_realworld_results(realworld_results)
 
         # (D) 评估优化真实数据集 (Realworld)
         # realworld_renew_results = Evaluation(model, REALWORLD_RENEW_DATASET_PATH, REALWORLD_RENEW_ADJ_PATH, REALWORLD_RENEW_LABELS_PATH, realworld_params, device)
