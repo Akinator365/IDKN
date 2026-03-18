@@ -248,11 +248,11 @@ if __name__ == "__main__":
 
     TRAIN_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'train')
     REALWORLD_LABELS_PATH = os.path.join(os.getcwd(), 'data', 'labels', 'realworld')
-    network_type = "LFR"
-    network = "LFR_500"
-    network_no = 1
-    network_name = network + "_" + str(network_no)
-    labels_path = os.path.join(TRAIN_LABELS_PATH, network_type + '_graph', network, network_name + '_labels.txt')
+    # network_type = "LFR"
+    # network = "LFR_500"
+    # network_no = 1
+    # network_name = network + "_" + str(network_no)
+    # labels_path = os.path.join(TRAIN_LABELS_PATH, network_type + '_graph', network, network_name + '_labels.txt')
     # realworld_name = "AirTraffic"
     # labels_path = os.path.join(REALWORLD_LABELS_PATH, realworld_name + '_labels.txt')
 
