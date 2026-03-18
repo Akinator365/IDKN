@@ -222,5 +222,5 @@ def plot_results_from_excel(excel_path):
 
 if __name__ == '__main__':
     # 调用方式：传入刚才生成的 Excel 文件即可
-    excel_file = "evaluation_results_epoch1287_re.xlsx"
+    excel_file = "results/evaluation_results_epoch1287_re.xlsx"
     plot_results_from_excel(excel_file)

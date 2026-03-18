@@ -424,7 +424,7 @@ if __name__ == '__main__':
     if match:
         timestamp = match.group(1)
         epoch = match.group(2)
-        test_result_filename = f"result_{timestamp}_epoch{epoch}.pkl"
+        test_result_filename = f"./results/result_{timestamp}_epoch{epoch}.pkl"
     else:
         # 备选方案：如果正则匹配失败，使用简单哈希或固定名
         test_result_filename = "eval_result_backup.pkl"

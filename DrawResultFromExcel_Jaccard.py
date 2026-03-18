@@ -126,5 +126,5 @@ def plot_topk_overlap_from_excel(excel_path):
 
 if __name__ == '__main__':
     # 请确保此时 Excel 里已经包含了那 5 列 Jaccard 数据
-    excel_file = "evaluation_results_epoch1287_re.xlsx"
+    excel_file = "results/evaluation_results_epoch1287_re.xlsx"
     plot_topk_overlap_from_excel(excel_file)
